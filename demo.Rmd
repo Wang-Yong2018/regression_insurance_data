@@ -1,0 +1,108 @@
+---
+title: "Regression with Insurance dataset"
+author: "WangYong"
+date: "2024-12-04"
+output: html_document
+---
+
+```{r setup, include=FALSE}
+knitr::opts_chunk$set(echo = TRUE)
+library(tidyverse)
+
+```
+
+# introduction
+
+In this notebook, I will show how to use R tidymodel related packages for regression from random guess , to mean, to feature based and tree based model. Later, I will use lightgbm related gradiant boost model to improve the prediction.
+Besides, In order to compare different model, I will use vetival as model service backend. 
+
+Now, let's begin.
+
+## quick glance of competition example, data and model evaluation
+- Your Goal: 
+The objectives of this challenge is to predict insurance premiums based on various factors.
+
+- Evaluation
+
+Submissions are evaluated using the Root Mean Squared Logarithmic Error (RMSLE).
+"Regression with an Insurance Dataset" is a tabular test for regression. 
+The model evaluation metric is: rmsel.("Square root of the average of the squared natural logarithm (plus one) error. Useful when it's more important to accurately predict lower magnitude values rather than precisely predicting higher magnitude values).
+
+```{r train_data}
+sample <- read.csv('input/sample_submission.csv')
+sample |> glimpse()
+```
+
+From about data, we know our target is submit the sample_submission.csv. with id, and predicted Premium.Amount. In sample_submission.csv, the Premium.Amoun is all the same, 1102.545. 
+
+Let's have a glimpse of the train data.
+
+```{r}
+df_train_y <- 
+  read_csv('input/train.csv',
+           col_select=c('id','Premium Amount'),
+           col_types=c('i','d')) |>
+  select(id,truth=`Premium Amount`)
+df_train_id <- df_train_y|>select(id)
+
+df_sample <- read_csv('input/sample_submission.csv')
+```
+From above output, it can be notice that, the last column 'Premium Amount' is varied from 64 to 2869. And there are 21 columns could be used for prediction.
+
+# Models 
+```{r}
+library(tidymodels)
+library(yardstick)
+
+# Define the custom metric function
+rmsel_v1 <- function(data, truth, estimate, na.rm = TRUE, ...) {
+  # Calculate the log of the truth and estimate
+  result <- data |> 
+    mutate(truth=log1p(truth),
+           estimate=log1p(estimate))|>
+    rmse(truth, estimate)
+  return (result) 
+
+}
+
+get_rmsel<- function(estimate_df,truth_df=df_train_y){
+  data <- truth_df |>
+    left_join(estimate_df,by='id')|>
+    select(id, truth, estimate)
+  data |> glimpse()
+  
+  metric <- 
+    data |> 
+    rmsel_v1('truth','estimate')
+  return(metric)
+    
+}
+
+lm_spec <- linear_reg() %>%
+  set_mode("regression") %>%
+  set_engine("lm")
+```
+
+## init v0 - linear regression from mean of Premoum Amount
+`all_train$`Premium Amount`|>mean()`
+
+```{r}
+
+get_lm_fit <- function(n_max=1000){
+  train <- read_csv('input/train.csv',n_max = {{n_max}})|>select(-id)
+  fit <- 
+    lm_spec|> 
+    fit(`Premium Amount`~ ., data = train)
+  
+  fit|>glance()|>print()
+  fit|>augment(new_data=train|>select(-`Premium Amount`))
+  return (fit)
+  
+}
+
+lm_fit <- get_lm_fit()
+#lm_fit |> glance(lm_fit)
+#lm_fit|>augment(read_csv())
+```
+
+
