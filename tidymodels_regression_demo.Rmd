@@ -1,0 +1,173 @@
+---
+title: "tidymodels_regression_demo"
+author: "WY"
+date: "`r Sys.Date()`"
+output: html_document
+---
+
+```{r setup, include=FALSE}
+knitr::opts_chunk$set(echo = TRUE)
+library(tidyverse)
+library(data.table)
+```
+
+# Introduction
+```{r}
+df_all_y <-
+  fread(file='./input/train.csv',
+           select = c('id','Premium Amount'),
+        #   col_types=c('i','d')
+        ) |>
+  select(id, truth= `Premium Amount`)
+
+df_sample <- fread('./input/sample_submission.csv')
+
+```
+
+show the Premium Amount distribution
+```{r}
+df_all_y |> 
+  #mutate(truth=log1p(truth))|>
+  ggplot(aes(x=truth)) +
+  geom_histogram(bins = 100, fill = "blue", color = "black") +
+  labs(title = 'Premium Amount distribution plot with log1p',x='Premium Amount')+
+   scale_x_continuous(trans = "log1p", breaks = c(0, 100,250,500,1000, 2000, 4000, 6000)
+                      #, labels = c(0, 1, 2, 5, 10)
+                      )+
+  theme_classic()
+```
+
+
+# Regression Model improve step by step
+## frame work
+```{r}
+library(yardstick)
+library(tidymodels)
+
+lm_spec <- linear_reg() %>%
+  set_mode("regression") %>%
+  set_engine("lm")
+
+rmsel <- function(data, truth='truth', estimate='estimate',na_rm=TRUE){
+  data|>glimpse()
+  data|>
+    select(truth={{truth}}, estimate={{estimate}})|>
+    transmute(truth = log1p(truth),
+              estimate = log1p(estimate) )|>
+   rmse(truth, estimate) 
+}
+
+rmsel_v1 <- function(data, truth, estimate, na.rm = TRUE, ...) {
+  # Calculate the log of the truth and estimate
+  result <- data |> 
+    mutate(truth=log1p(truth),
+           estimate=log1p(estimate))|>
+    rmse(truth, estimate)
+  
+  return (result) 
+
+}
+
+```
+
+## models
+### V0 init- guest 1102.545
+```{r}
+avg_value <- df_sample|>summarize(avg_value=mean(`Premium Amount`))|>pull(avg_value)
+
+df_init_v0 <- df_all_y |> mutate(estimate=avg_value)
+
+df_init_v0 |> 
+  rmsel('truth','estimate')
+```
+### v0.1 linear regression
+```{r}
+get_lm_fit_v0.1 <- function(nrows=Inf){
+  train <- fread('input/train.csv',nrows = {{nrows}})|>select(-id)
+  fit <- 
+    lm_spec|> 
+    fit(`Premium Amount`~ `Age` +
+          `Gender`+
+          `Annual Income`+
+          `Marital Status`+
+          `Number of Dependents`+
+          `Education Level`+
+          `Occupation`+
+          `Insurance Duration`+
+          `Policy Type`+
+          `Previous Claims`+
+          `Vehicle Age`+
+          `Credit Score`+
+          `Insurance Duration`+
+          `Policy Start Date`+
+          `Customer Feedback`+
+          `Smoking Status`+
+          `Exercise Frequency`+
+          `Property Type`,
+        data = train)
+  
+  fit|>glance()|>print()
+  fit|>
+    augment(new_data=train)|>
+    select(truth=`Premium Amount`,estimate=.pred)|>
+    rmsel()|>
+    print()
+  return (fit)
+  
+}
+
+lm_fit_v0.1 <- get_lm_fit_v0.1()
+```
+### v0.2 start to use reciep
+
+```{r}
+
+get_lm_fit_v0.2 <- function(nrows=Inf){
+  train <- fread('input/train.csv',nrows = {{nrows}})|>select(-id)
+
+ 
+ recipe_lm <-
+   recipe(`Premium Amount`~ `Age` +
+          `Gender`+
+          `Annual Income`+
+          `Marital Status`+
+          `Number of Dependents`+
+          `Education Level`+
+          `Occupation`+
+          `Insurance Duration`+
+          `Policy Type`+
+          `Previous Claims`+
+          `Vehicle Age`+
+          `Credit Score`+
+          `Insurance Duration`+
+          `Policy Start Date`+
+          `Customer Feedback`+
+          `Smoking Status`+
+          `Exercise Frequency`+
+          `Property Type`,data=train) |>
+   #step_log(Gr_Liv_Area, base = 10)|>
+   step_dummy(all_nominal_predictors())
+
+  lm_wflow <-
+   workflow() |>
+   add_model(lm_spec) |>
+   add_recipe(recipe_lm)
+            
+ lm_fit <- fit(lm_wflow, train)
+ 
+  lm_fit|>glance()|>print()
+  lm_fit|>
+    augment(new_data=train)|>
+    select(truth=`Premium Amount`,estimate=.pred)|>
+    rmsel()|>
+    print()
+
+  return (lm_fit)
+  
+}
+
+lm_fit_v0.2 <- get_lm_fit_v0.2()
+# TODO something wrong v0.1 result is exact as v0.2
+```
+
+
