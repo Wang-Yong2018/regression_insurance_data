@@ -9,37 +9,32 @@ output: html_document
 knitr::opts_chunk$set(echo = TRUE)
 library(tidyverse)
 library(data.table)
+source('etl.R')
+init_db()
 ```
 
-# Introduction
-```{r}
-df_all_y <-
-  fread(file='./input/train.csv',
-           select = c('id','Premium Amount'),
-        #   col_types=c('i','d')
-        ) |>
-  select(id, truth= `Premium Amount`)
-
-df_sample <- fread('./input/sample_submission.csv')
-
+# 1. Introduction
+```{r,cache=TRUE}
+get_train() |> skimr::skim()
+df_all_y <-get_train()|>select(id,truth=Premium.Amount)
 ```
 
 show the Premium Amount distribution
 ```{r}
-df_all_y |> 
+get_train() |>select(truth=Premium.Amount)|>
   #mutate(truth=log1p(truth))|>
   ggplot(aes(x=truth)) +
   geom_histogram(bins = 100, fill = "blue", color = "black") +
   labs(title = 'Premium Amount distribution plot with log1p',x='Premium Amount')+
-   scale_x_continuous(trans = "log1p", breaks = c(0, 100,250,500,1000, 2000, 4000, 6000)
-                      #, labels = c(0, 1, 2, 5, 10)
-                      )+
+  scale_x_continuous(trans = "log1p", breaks = c(0, 100,250,500,1000, 2000, 4000, 6000) 
+                     #, labels = c(0, 1, 2, 5, 10) 
+                     )+
   theme_classic()
 ```
 
 
-# Regression Model improve step by step
-## frame work
+# 2.Regression Model improve step by step
+## 2.1 frame work
 ```{r}
 library(yardstick)
 library(tidymodels)
@@ -49,7 +44,7 @@ lm_spec <- linear_reg() %>%
   set_engine("lm")
 
 rmsel <- function(data, truth='truth', estimate='estimate',na_rm=TRUE){
-  data|>glimpse()
+#  data|>glimpse()
   data|>
     select(truth={{truth}}, estimate={{estimate}})|>
     transmute(truth = log1p(truth),
@@ -57,68 +52,40 @@ rmsel <- function(data, truth='truth', estimate='estimate',na_rm=TRUE){
    rmse(truth, estimate) 
 }
 
-rmsel_v1 <- function(data, truth, estimate, na.rm = TRUE, ...) {
-  # Calculate the log of the truth and estimate
-  result <- data |> 
-    mutate(truth=log1p(truth),
-           estimate=log1p(estimate))|>
-    rmse(truth, estimate)
-  
-  return (result) 
-
-}
-
+lm_wf <-
+  workflow() %>% 
+  add_model(lm_spec)
 ```
 
-## models
-### V0 init- guest 1102.545
+## 2.2models
+### -1). V0 init- guest 1102.545
 ```{r}
-avg_value <- df_sample|>summarize(avg_value=mean(`Premium Amount`))|>pull(avg_value)
+avg_value <- get_sample()|>summarize(avg_value=mean(`Premium.Amount`))|>pull(avg_value)
 
 df_init_v0 <- df_all_y |> mutate(estimate=avg_value)
 
-df_init_v0 |> 
-  rmsel('truth','estimate')
-```
-### v0.1 linear regression
-```{r}
-get_lm_fit_v0.1 <- function(nrows=Inf){
-  train <- fread('input/train.csv',nrows = {{nrows}})|>select(-id)
-  fit <- 
-    lm_spec|> 
-    fit(`Premium Amount`~ `Age` +
-          `Gender`+
-          `Annual Income`+
-          `Marital Status`+
-          `Number of Dependents`+
-          `Education Level`+
-          `Occupation`+
-          `Insurance Duration`+
-          `Policy Type`+
-          `Previous Claims`+
-          `Vehicle Age`+
-          `Credit Score`+
-          `Insurance Duration`+
-          `Policy Start Date`+
-          `Customer Feedback`+
-          `Smoking Status`+
-          `Exercise Frequency`+
-          `Property Type`,
-        data = train)
-  
-  fit|>glance()|>print()
-  fit|>
-    augment(new_data=train)|>
-    select(truth=`Premium Amount`,estimate=.pred)|>
-    rmsel()|>
-    print()
-  return (fit)
-  
-}
+rcp_v0 <- 
+  recipes::recipe(truth ~ estimate, data=df_init_v0)
 
-lm_fit_v0.1 <- get_lm_fit_v0.1()
+vmod_v0 <- get_fit_wf(rcp_v0,data = df_init_v0,name='interception 1102.545')
 ```
-### v0.2 start to use reciep
+
+### -2). v0.1 linear regression
+```{r}
+df_train <- get_train()|>
+  rename(truth='Premium.Amount')|>
+  collect()
+
+rcp_v0.1 <- 
+  recipes::recipe(truth ~.,df_train)|>
+  step_rm(all_nominal())|>
+  step_rm(id)
+
+
+vmod_v0.1 <- get_fit_wf(rcp_v0.1,data = df_train,name='all numeric predictor')
+
+```
+### -3). v0.2 start to use reciep
 
 ```{r}
 
@@ -150,8 +117,8 @@ get_lm_fit_v0.2 <- function(nrows=Inf){
 
   lm_wflow <-
    workflow() |>
-   add_model(lm_spec) |>
-   add_recipe(recipe_lm)
+   add_recipe(recipe_lm)|>
+   add_model(lm_spec) 
             
  lm_fit <- fit(lm_wflow, train)
  
@@ -171,3 +138,55 @@ lm_fit_v0.2 <- get_lm_fit_v0.2()
 ```
 
 
+## 2.3 vetiver
+### new 
+```{r}
+library(vetiver)
+library(pins)
+
+keep_model <- function(mod=NULL) {
+  if (is.null(mod)) {
+    stop('pls input a fitted mod')
+  }
+  
+
+   
+ model_board <- board_folder(path = './vetiver',versioned = TRUE)
+ model_board |>
+   vetiver_pin_write(mod) 
+  
+}
+```
+
+## version model
+
+```{r}
+
+show_model_permformance <- function(metric_name='rmsel'){
+  model_names <-model_board%>% pin_list() %>% set_names()
+
+  metric_result <- 
+    model_names %>% 
+    map(\(name)  
+        model_board %>%  
+          pin_meta(name) %>% 
+          pluck('user','metrics') %>%
+          as_tibble()
+        ) %>%
+    list_rbind( names_to = "id") #  per column list_cbind,   per vector list_c
+  
+ # metric_result %>% filter(.metric==metric_name) %>% arrange(.estimate)
+ metric_result %>% (.estimate=rmsel) #%>% arrange(.estimate)
+    
+}
+
+show_model_permformance() %>% filter(.estimate<0.75) %>%
+  mutate(id=fct_reorder(id,.estimate)) %>%
+  ggplot(aes(x=id, y=.estimate,color=id)) +
+  geom_point() +
+  labs (color=NULL) +
+  theme(legend.position="none")+
+  ggplot2::coord_flip()
+  
+  
+```
