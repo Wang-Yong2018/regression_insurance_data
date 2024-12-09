@@ -212,7 +212,7 @@ tmp_df <- data.frame(v0.5=vmod_v0.5$model$object$fit$fit$object$fit$residuals,
 #                      v0=vmod_v0$model$object$fit$fit$object$fit$residuals,
                       )
  
-  tmp_df|> pivot_longer(cols=c('v0.3','v0.4'),names_to = 'name') |>
+  tmp_df|> pivot_longer(cols=c('v0.5','v0.4'),names_to = 'name') |>
   ggplot(aes(x = value, fill = name)) +
   geom_density(alpha = 0.2) +
   labs(title = "Overlaid Density Plots", x = "Values", y = "Density") +
