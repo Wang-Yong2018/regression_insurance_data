@@ -1,0 +1,248 @@
+---
+title: "tidymodels_regression_demo"
+author: "WY"
+date: "`r Sys.Date()`"
+output: html_document
+---
+
+```{r setup, include=FALSE}
+knitr::opts_chunk$set(echo = TRUE)
+library(tidyverse)
+library(data.table)
+source('etl.R')
+source('utils.R')
+source('mod_board.R')
+init_db(do=FALSE) # when first time using it, the do parameter should be changed to TRUE as below 
+# init_db(do =TRUE)
+```
+
+# 1. Introduction
+```{r,cache=TRUE}
+get_train() |> skimr::skim()
+
+```
+
+show the Premium Amount distribution
+```{r}
+get_train() |>select(truth=Premium.Amount)|>
+  #mutate(truth=log1p(truth))|>
+  ggplot(aes(x=truth)) +
+  geom_histogram(bins = 100, fill = "blue", color = "black") +
+  labs(title = 'Premium Amount distribution plot with log1p',x='Premium Amount')+
+  scale_x_continuous(trans = "log1p", breaks = c(0, 100,250,500,1000, 2000, 4000, 6000) 
+                     #, labels = c(0, 1, 2, 5, 10) 
+                     )+
+  theme_classic()
+```
+
+
+# 2.Regression Model improve step by step
+## 2.1 frame work
+
+
+## 2.2models
+### -0). V0 init- guest 1102.545
+```{r}
+
+get_vmod_v0 <- function(){
+  
+  avg_value <- 
+    get_sample()|>
+    summarize(avg_value=mean(`Premium.Amount`))|>
+    pull(avg_value)
+  
+  df <- get_train() |>
+    select(truth='Premium.Amount')|>
+    mutate(estimate=avg_value)
+  
+  rcp <- 
+    recipes::recipe(truth ~ estimate, data=df)
+  
+  vmod <- 
+    get_fit_wf(rcp,data = df,name='interception 1102.545')
+  return(vmod)
+}
+vmod_v0 <- get_vmod_v0()
+```
+
+
+### -1). v0.1 linear regression
+```{r}
+get_vmod_v0.1 <- function() {
+  
+  df<- get_train()|>
+    select_if(is.numeric)|>
+    rename(truth='Premium.Amount')|>
+    collect()
+  
+  rcp <- 
+    recipes::recipe(truth ~.,df)|>
+    step_rm(all_nominal())|>
+    step_rm(id)
+  
+  vmod<- get_fit_wf(rcp,data = df,name='all numeric predictor')
+  
+  return(vmod)
+
+}
+
+vmod_v0.1 <- get_vmod_v0.1()
+
+vmod_v0.1$metadata$user$metrics  |>map_dbl(\(x)  x)
+```
+
+### -2). v0.2 start to use reciep
+```{r}
+
+get_vmod_v0.2 <- function(nrows=Inf){
+   df<- get_train()|>
+    select(-id)|>
+    select_if(is.numeric)|>
+    rename(truth='Premium.Amount')|>
+    collect()
+  
+  rcp <- 
+    recipes::recipe(truth ~.,df)|>
+    step_impute_median(all_numeric_predictors())|>
+    step_rm(all_nominal())
+  
+  vmod<- get_fit_wf(rcp,data = df,name='fillna to all numeric predictor')
+  
+  return(vmod)
+  
+  
+}
+
+vmod_v0.2 <- get_vmod_v0.2()
+vmod_v0.2$metadata$user$metrics  |>map_dbl(\(x)  x)
+
+```
+
+### -3). v0.3 start to use recipe
+
+```{r}
+
+get_vmod_v0.3 <- function(nrows=Inf){
+  df<- 
+    get_train()|>
+    select(-id)|>
+    select(where(is.POSIXt)|where(is.numeric))|>
+    rename(truth='Premium.Amount')|>
+    collect()
+  
+  rcp <- 
+    recipes::recipe(truth ~.,df)|>
+    step_date(`Policy.Start.Date`, features = c("dow", "month", "year")) |>
+    step_holiday(`Policy.Start.Date`, holidays = timeDate::listHolidays()) |>
+    step_rm(`Policy.Start.Date`)|>
+    step_impute_median(all_numeric_predictors())|>
+    step_rm(all_nominal())
+  
+  vmod<- get_fit_wf(rcp,data = df,name='fillna numeric + date feature')
+  
+  
+}
+vmod_v0.3 <- get_vmod_v0.3()
+vmod_v0.3$metadata$user$metrics  |>map_dbl(\(x)  x)
+
+tmp_df <- data.frame(v0.3=vmod_v0.3$model$object$fit$fit$object$fit$residuals,
+                      v0.2=vmod_v0.2$model$object$fit$fit$object$fit$residuals
+#                      v0.1=vmod_v0.1$model$object$fit$fit$object$fit$residuals,
+#                      v0=vmod_v0$model$object$fit$fit$object$fit$residuals,
+                      )
+ 
+  tmp_df|> pivot_longer(cols=c('v0.3','v0.2'),names_to = 'name') |>
+  ggplot(aes(x = value, fill = name)) +
+  geom_density(alpha = 0.2) +
+  labs(title = "Overlaid Density Plots", x = "Values", y = "Density") +
+  theme_minimal()
+```
+### -4 v0.4 
+```{r}
+
+get_vmod_v0.4 <- function(nrows=Inf){
+  df<- 
+    get_train()|>
+    select(-id)|>
+    rename(truth='Premium.Amount')|>
+    collect()
+  
+  rcp <- 
+    recipes::recipe(truth ~.,df)|>
+    step_date(`Policy.Start.Date`, features = c("dow", "month", "year")) |>
+    step_holiday(`Policy.Start.Date`, holidays = timeDate::listHolidays()) |>
+    step_rm(`Policy.Start.Date`)|>
+    step_impute_median(all_numeric_predictors())|>
+    step_impute_mode(all_nominal_predictors()) |>
+    step_dummy()
+  
+  vmod<- get_fit_wf(rcp,data = df,name='fillna numeric + date feature+ nominal_dummy_fillmod')
+  
+  
+}
+vmod_v0.4 <- get_vmod_v0.4()
+vmod_v0.4$metadata$user$metrics  |>map_dbl(\(x)  x)
+
+```
+
+
+## 2.3 vetiver
+### new 
+```{r}
+library(vetiver)
+library(pins)
+
+keep_model <- function(mod=NULL) {
+  if (is.null(mod)) {
+    stop('pls input a fitted mod')
+  }
+  
+
+   
+ model_board <- board_folder(path = './vetiver',versioned = TRUE)
+ model_board |>
+   vetiver_pin_write(mod) 
+  
+}
+```
+
+## version model
+
+```{r}
+
+show_model_permformance <- function(metric_name='rmsel'){
+  model_names <-model_board%>% pin_list() %>% set_names()
+
+  metric_result <- 
+    model_names %>% 
+    map(\(name)  
+        model_board %>%  
+          pin_meta(name) %>% 
+          pluck('user','metrics') %>%
+          as_tibble()
+        ) %>%
+    list_rbind( names_to = "id") #  per column list_cbind,   per vector list_c
+  
+ # metric_result %>% filter(.metric==metric_name) %>% arrange(.estimate)
+ metric_result %>% select(id,.estimate=rmsel) #%>% arrange(.estimate)
+    
+}
+
+show_model_permformance() %>% 
+  mutate(id=fct_reorder(id,desc(.estimate))) %>%
+  ggplot(aes(x=id,xend=id,y = 1.12, yend=.estimate,fill=id)) +
+  geom_segment(size=7,color='blue')+
+  geom_text(aes(x = id, y = .estimate, label = .estimate), 
+            hjust = -0.2, vjust = 0.5, size = 5, color = "red") +
+  #geom_hline(yintercept = .estimate) +
+  scale_y_continuous(limits=c(1.12,1.2),
+                     #breaks= seq(0.8, 1.2,by = 0.1)
+                     )+
+  labs (title = 'model performance board',
+        color=NULL) +
+  coord_flip()+
+  theme_gray()
+  
+  
+  
+```

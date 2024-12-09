@@ -35,7 +35,10 @@ get_duck_con <- function() {
 get_train <- function(){
   file_name <- './input/train.csv'
   con <- get_duck_con()
-  ddb <- dbReadTable(con,'train')
+  ddb <-
+    dbReadTable(con,'train')|> 
+    mutate(`Policy.Start.Date`=ymd_hms(`Policy.Start.Date`))
+  
   dbDisconnect(con)
   return(ddb)
 }
