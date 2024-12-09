@@ -145,17 +145,7 @@ get_vmod_v0.3 <- function(nrows=Inf){
 vmod_v0.3 <- get_vmod_v0.3()
 vmod_v0.3$metadata$user$metrics  |>map_dbl(\(x)  x)
 
-tmp_df <- data.frame(v0.3=vmod_v0.3$model$object$fit$fit$object$fit$residuals,
-                      v0.2=vmod_v0.2$model$object$fit$fit$object$fit$residuals
-#                      v0.1=vmod_v0.1$model$object$fit$fit$object$fit$residuals,
-#                      v0=vmod_v0$model$object$fit$fit$object$fit$residuals,
-                      )
- 
-  tmp_df|> pivot_longer(cols=c('v0.3','v0.2'),names_to = 'name') |>
-  ggplot(aes(x = value, fill = name)) +
-  geom_density(alpha = 0.2) +
-  labs(title = "Overlaid Density Plots", x = "Values", y = "Density") +
-  theme_minimal()
+
 ```
 ### -4 v0.4 
 ```{r}
@@ -183,6 +173,51 @@ get_vmod_v0.4 <- function(nrows=Inf){
 vmod_v0.4 <- get_vmod_v0.4()
 vmod_v0.4$metadata$user$metrics  |>map_dbl(\(x)  x)
 
+```
+
+
+### -5 v0.5 
+```{r}
+
+get_vmod_v0.5 <- function(nrows=Inf){
+  df<- 
+    get_train()|>
+    select(-id)|>
+    rename(truth='Premium.Amount')|>
+    collect()
+  
+  rcp <- 
+    recipes::recipe(truth ~.,df)|>
+    step_date(`Policy.Start.Date`, features = c("dow", "month", "year")) |>
+    step_holiday(`Policy.Start.Date`, holidays = timeDate::listHolidays()) |>
+    step_rm(`Policy.Start.Date`)|>
+    step_impute_median(all_numeric_predictors())|>
+    step_unknown(all_nominal_predictors()) |>
+    step_dummy()
+  
+  vmod<- get_fit_wf(rcp,data = df,name='fillna numeric + date feature+ nominal_dummy_fillmod')
+  
+  
+}
+vmod_v0.5 <- get_vmod_v0.5()
+vmod_v0.5$metadata$user$metrics  |>map_dbl(\(x)  x)
+
+```
+
+
+```{r}
+tmp_df <- data.frame(v0.5=vmod_v0.5$model$object$fit$fit$object$fit$residuals,
+                     # v0.2=vmod_v0.2$model$object$fit$fit$object$fit$residuals
+                      v0.4=vmod_v0.4$model$object$fit$fit$object$fit$residuals
+#                      v0=vmod_v0$model$object$fit$fit$object$fit$residuals,
+                      )
+ 
+  tmp_df|> pivot_longer(cols=c('v0.3','v0.4'),names_to = 'name') |>
+  ggplot(aes(x = value, fill = name)) +
+  geom_density(alpha = 0.2) +
+  labs(title = "Overlaid Density Plots", x = "Values", y = "Density") +
+  theme_minimal()
+  
 ```
 
 
