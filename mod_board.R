@@ -36,7 +36,7 @@ show_model_permformance <- function(metric_name='rmsel'){
     list_rbind( names_to = "id") #  per column list_cbind,   per vector list_c
   
   # metric_result %>% filter(.metric==metric_name) %>% arrange(.estimate)
-  metric_result %>% select(id,.estimate=rmsel) #%>% arrange(.estimate)
+  metric_result %>% select(id,.estimate=metric_name) #%>% arrange(.estimate)
   
 }
 
