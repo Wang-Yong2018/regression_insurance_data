@@ -89,7 +89,6 @@ get_vmod_v0.1 <- function() {
 }
 
 vmod_v0.1 <- get_vmod_v0.1()
-
 ```
 
 ### -2). v0.2 start to use reciep
@@ -116,7 +115,6 @@ get_vmod_v0.2 <- function(nrows=Inf){
 }
 
 vmod_v0.2 <- get_vmod_v0.2()
-vmod_v0.2$metadata$user$metrics  |>map_dbl(\(x)  x)
 
 ```
 
@@ -146,7 +144,6 @@ get_vmod_v0.3 <- function(nrows=Inf){
   
 }
 vmod_v0.3 <- get_vmod_v0.3()
-vmod_v0.3$metadata$user$metrics  |>map_dbl(\(x)  x)
 
 
 ```
@@ -175,7 +172,6 @@ get_vmod_v0.5 <- function(nrows=Inf){
   
 }
 vmod_v0.5 <- get_vmod_v0.5()
-vmod_v0.5$metadata$user$metrics  |>map_dbl(\(x)  x)
 
 ```
 
@@ -207,7 +203,6 @@ get_vmod_v0.6 <- function(nrows=Inf){
   
 }
 vmod_v0.6 <- get_vmod_v0.6()
-vmod_v0.6$metadata$user$metrics  |>map_dbl(\(x)  x)
 ```
 
 ### -7 v0.7 - log1p trans income and claims
@@ -239,7 +234,6 @@ get_vmod_v0.7 <- function(nrows=Inf){
   
 }
 vmod_v0.7 <- get_vmod_v0.7()
-vmod_v0.7$metadata$user$metrics  |>map_dbl(\(x)  x)
 ```
 
 ## 2.3 vetiver
@@ -291,7 +285,17 @@ tmp_df <- data.frame(
 ```
 
 ```{r}
-get_train()|>select(id,date=`Policy.Start.Date`) |>cbind(tmp_df) |> group_by(year(date)) |> summarize(across(c(v0.1, v0.7,v0.6), list(mean = ~ mean(.x, na.rm = TRUE), sum = ~sum(.x,na.rm = T)),                                          .names = "{.col}.{.fn}")) |>round(2)
+get_train()|>
+  select(id,date=`Policy.Start.Date`) |>
+  cbind(tmp_df) |>
+  group_by(year(date)) |>
+  summarize(across(starts_with('v'),
+                   list(mean = ~ mean(.x, na.rm = TRUE),
+                        sum = ~sum(.x,na.rm = T)
+                        ), 
+                   .names = "{.col}.{.fn}")
+            ) |>
+  round(2)
 
 
 ```

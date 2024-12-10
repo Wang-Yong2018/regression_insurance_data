@@ -73,6 +73,12 @@ get_fit_wf <- function(rcp,data,name){
   vetiver_mod <-vetiver_model(model=fit_mod, 
                               model_name = paste0(name) ,
                               metadata = list(metrics=glance_mod))
+  
+  vetiver_mod$metadata$user$metrics  |>
+    pivot_longer(cols=everything()) |>
+    filter(grepl('rmse|r.squared|nob',name)) |>
+    print()
+  
   keep_model(vetiver_mod)
   return(vetiver_mod)
 }
