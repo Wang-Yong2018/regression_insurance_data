@@ -11,6 +11,7 @@ library(tidyverse)
 library(data.table)
 source('etl.R')
 source('utils.R')
+source('mod_board.R')
 init_db(do=FALSE) # when first time using it, the do parameter should be changed to TRUE as below 
 # init_db(do =TRUE)
 ```
@@ -130,46 +131,9 @@ vmod_v0.2 <- get_vmod_v0.2()
 
 
 ## 2.3 vetiver
-### new 
-```{r}
-library(vetiver)
-library(pins)
-
-keep_model <- function(mod=NULL) {
-  if (is.null(mod)) {
-    stop('pls input a fitted mod')
-  }
-  
-
-   
- model_board <- board_folder(path = './vetiver',versioned = TRUE)
- model_board |>
-   vetiver_pin_write(mod) 
-  
-}
-```
-
 ## version model
 
 ```{r}
-
-show_model_permformance <- function(metric_name='rmsel'){
-  model_names <-model_board%>% pin_list() %>% set_names()
-
-  metric_result <- 
-    model_names %>% 
-    map(\(name)  
-        model_board %>%  
-          pin_meta(name) %>% 
-          pluck('user','metrics') %>%
-          as_tibble()
-        ) %>%
-    list_rbind( names_to = "id") #  per column list_cbind,   per vector list_c
-  
- # metric_result %>% filter(.metric==metric_name) %>% arrange(.estimate)
- metric_result %>% select(id,.estimate=rmsel) #%>% arrange(.estimate)
-    
-}
 
 show_model_permformance() %>% 
   mutate(id=fct_reorder(id,desc(.estimate))) %>%

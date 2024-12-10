@@ -1,5 +1,8 @@
 library(yardstick)
 library(tidymodels)
+library(broom)
+
+
 
 rmsel <- function(data, truth='truth', estimate='estimate',na_rm=TRUE){
   #  data|>glimpse()
@@ -27,35 +30,47 @@ get_lm_wf<- function(){
 get_fit_wf <- function(rcp,data,name){
   
   lm_wf <- get_lm_wf()
-  fit_mod <- lm_wf |>
+  fit_wf <- lm_wf |>
     add_recipe(rcp)|>
     fit({{data}}) 
   
-  result_df <- 
+  fit_mod <- 
+    fit_wf |> 
+    extract_fit_engine()
+  
+  tidy_mod <- fit_mod |> broom::tidy()
+  glance_mod <- fit_mod |> broom::glance()
+  tidy_augment <-
     fit_mod |> 
-    augment(new_data = {{data}}) |>
-    select(truth,.pred)
+    broom::augment() |>
+    select(truth=`..y`,.pred=`.fitted`)
   
   rmsel_value <- 
-    result_df |>
+    tidy_augment  |>
     rmsel(truth, .pred)|>
-    
     pull(.estimate)
+  
   rmse_value <- 
-    result_df |>
+    tidy_augment |>
     rmse(truth, .pred) |>
     pull(.estimate)
   
-  rsq_value <- 
-    result_df |> 
-    rsq(truth, .pred) |>
-    pull(.estimate)
+  glance_mod <- 
+    glance_mod|>
+    mutate(rmse=rmse_value,
+           rmsel=rmsel_value)
   
-  vetival_mod <-vetiver_model(model=fit_mod, 
+  fit_mod$qr <- NULL
+  fit_mod$residuals <- NULL
+  fit_mod$effects <- NULL
+  fit_mod$na.action <- NULL
+  fit_mod$model <- NULL
+  
+  
+  vetiver_mod <-vetiver_model(model=fit_mod, 
                               model_name = paste0(name) ,
-                              metadata = list(metrics=list(rmsel=rmsel_value,
-                                                           rsq=rsq_value,
-                                                           rmse=rmse_value)))
-  
-  return(vetival_mod)
+                              metadata = list(metrics=glance_mod))
+  keep_model(vetiver_mod)
+  return(vetiver_mod)
 }
+
