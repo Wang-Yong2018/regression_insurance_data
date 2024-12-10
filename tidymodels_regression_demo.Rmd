@@ -41,7 +41,7 @@ get_train() |>select(truth=Premium.Amount)|>
 
 
 ## 2.2models
-### -1). V0 init- guest 1102.545
+### -0). V0 init- guest 1102.545
 ```{r}
 
 get_vmod_v0 <- function(){
@@ -66,7 +66,7 @@ vmod_v0 <- get_vmod_v0()
 ```
 
 
-### -2). v0.1 linear regression
+### -1). v0.1 linear regression
 ```{r}
 get_vmod_v0.1 <- function() {
   
@@ -89,44 +89,122 @@ get_vmod_v0.1 <- function() {
 vmod_v0.1 <- get_vmod_v0.1()
 
 ```
-### -3). v0.2 start to use reciep
 
+### -2). v0.2 start to use reciep
 ```{r}
 
 get_vmod_v0.2 <- function(nrows=Inf){
-  df <- 
-    get_train()|>collect()
-
- 
-  rcp <-
-    recipe(`Premium.Amount`~ `Age` +
-          `Gender`+
-          `Annual.Income`+
-          `Marital.Status`+
-          `Number.of.Dependents`+
-          `Education.Level`+
-          `Occupation`+
-          `Insurance.Duration`+
-          `Policy.Type`+
-          `Previous.Claims`+
-          `Vehicle.Age`+
-          `Credit.Score`+
-          `Insurance.Duration`+
-          `Policy.Start.Date`+
-          `Customer.Feedback`+
-          `Smoking.Status`+
-          `Exercise.Frequency`+
-          `Property.Type`,data=df) |>
-   step_dummy(all_nominal_predictors())
-
-  vmod<- get_fit_wf(rcp,data = df,name='dummy_nominal')
-
-  return (vmod)
+   df<- get_train()|>
+    select(-id)|>
+    select_if(is.numeric)|>
+    rename(truth='Premium.Amount')|>
+    collect()
+  
+  rcp <- 
+    recipes::recipe(truth ~.,df)|>
+    step_impute_median(all_numeric_predictors())|>
+    step_rm(all_nominal())
+  
+  vmod<- get_fit_wf(rcp,data = df,name='fillna to all numeric predictor')
+  
+  return(vmod)
+  
   
 }
 
 vmod_v0.2 <- get_vmod_v0.2()
-# TODO something wrong v0.1 result is exact as v0.2
+vmod_v0.2$metadata$user$metrics  |>map_dbl(\(x)  x)
+
+```
+
+### -3). v0.3 start to use recipe
+
+```{r}
+
+get_vmod_v0.3 <- function(nrows=Inf){
+  df<- 
+    get_train()|>
+    select(-id)|>
+    select(where(is.POSIXt)|where(is.numeric))|>
+    rename(truth='Premium.Amount')|>
+    collect()
+  
+  rcp <- 
+    recipes::recipe(truth ~.,df)|>
+    step_date(`Policy.Start.Date`, features = c("dow", "month", "year")) |>
+    step_holiday(`Policy.Start.Date`, holidays = timeDate::listHolidays()) |>
+    step_rm(`Policy.Start.Date`)|>
+    step_impute_median(all_numeric_predictors())|>
+    step_rm(all_nominal())
+  
+  vmod<- get_fit_wf(rcp,data = df,name='fillna numeric + date feature')
+  
+  
+}
+vmod_v0.3 <- get_vmod_v0.3()
+vmod_v0.3$metadata$user$metrics  |>map_dbl(\(x)  x)
+
+
+```
+
+### -5 v0.5 
+```{r}
+
+get_vmod_v0.5 <- function(nrows=Inf){
+  df<- 
+    get_train()|>
+    select(-id)|>
+    rename(truth='Premium.Amount')|>
+    collect()
+  
+  rcp <- 
+    recipes::recipe(truth ~.,df)|>
+    step_date(`Policy.Start.Date`, features = c("dow", "month", "year")) |>
+    #step_holiday(`Policy.Start.Date`, holidays = timeDate::listHolidays()) |>
+    step_rm(`Policy.Start.Date`)|>
+    step_impute_median(all_numeric_predictors())|>
+    step_unknown(all_nominal_predictors()) |>
+    step_dummy()
+  
+  vmod<- get_fit_wf(rcp,data = df,name='fillna numeric + date feature+ nominal_dummy_fillmod')
+  
+  
+}
+vmod_v0.5 <- get_vmod_v0.5()
+vmod_v0.5$metadata$user$metrics  |>map_dbl(\(x)  x)
+
+```
+
+
+
+### -6 v0.6 - manuall change year to dummy 
+```{r}
+
+get_vmod_v0.6 <- function(nrows=Inf){
+  df<- 
+    get_train()|>
+    select(-id)|>
+    rename(truth='Premium.Amount',
+           date = `Policy.Start.Date`)|>
+    collect()
+  
+  rcp <- 
+    recipes::recipe(truth ~.,df)|>
+    step_date(date, features = c("dow", "month","year")) |>
+    step_rm(date_year)|>
+    step_dummy() |>
+    #step_holiday(`Policy.Start.Date`, holidays = timeDate::listHolidays()) |>
+    step_impute_median(all_numeric_predictors())|>
+    step_unknown(all_nominal_predictors()) |>
+    step_pca(num_comp=50)
+  
+  vmod<- get_fit_wf(rcp,data = df,name='v0.6 fillna numeric + date feature+year nominal_dummy_fillmod')
+  
+  
+}
+vmod_v0.6 <- get_vmod_v0.6()
+vmod_v0.6$metadata$user$metrics  |>map_dbl(\(x)  x)
+```
 ```
 
 
@@ -134,7 +212,6 @@ vmod_v0.2 <- get_vmod_v0.2()
 ## version model
 
 ```{r}
-
 show_model_permformance() %>% 
   mutate(id=fct_reorder(id,desc(.estimate))) %>%
   ggplot(aes(x=id,xend=id,y = 1.12, yend=.estimate,fill=id)) +
@@ -150,6 +227,28 @@ show_model_permformance() %>%
   coord_flip()+
   theme_gray()
   
+```
+
+
+## 2.4 plot residual
+
+## plot residual
+```{r}
+tmp_df <- data.frame(v0.5=vmod_v0.5$model$residuals,
+                     v0.6=vmod_v0.6$model$residuals,
+                     #v0.4=vmod_v0.4$model$object$fit$fit$object$fit$residuals,
+                     v0.1=vmod_v0$model$residuals
+) 
+ 
+  tmp_df|>
+  pivot_longer(cols=c('v0.1','v0.5','v0.6'),names_to = 'name') |>
+  ggplot(aes(x = value, color = name)) +
+  geom_density(alpha = 0.1) +
+  labs(title = "Overlaid Density Plots", x = "Values", y = "Density") +
+  theme_minimal()
   
-  
+```
+
+```{r}
+get_train()|>select(id,date=`Policy.Start.Date`) |>cbind(tmp_df) |> group_by(year(date)) |> summarize(across(c(v0.1, v0.5,v0.6), list(mean = ~ mean(.x, na.rm = TRUE), sum = ~sum(.x,na.rm = T)),                                          .names = "{.col}.{.fn}")) |>round()
 ```

@@ -63,6 +63,8 @@ get_vmod_v0 <- function(){
   return(vmod)
 }
 vmod_v0 <- get_vmod_v0()
+
+vmod_v0$metadata$user$metrics  |>map_dbl(\(x)  x)
 ```
 
 
@@ -164,7 +166,7 @@ get_vmod_v0.4 <- function(nrows=Inf){
     step_rm(`Policy.Start.Date`)|>
     step_impute_median(all_numeric_predictors())|>
     step_impute_mode(all_nominal_predictors()) |>
-    step_dummy()
+    step_pc(num_comp=50)
   
   vmod<- get_fit_wf(rcp,data = df,name='fillna numeric + date feature+ nominal_dummy_fillmod')
   
@@ -189,7 +191,7 @@ get_vmod_v0.5 <- function(nrows=Inf){
   rcp <- 
     recipes::recipe(truth ~.,df)|>
     step_date(`Policy.Start.Date`, features = c("dow", "month", "year")) |>
-    step_holiday(`Policy.Start.Date`, holidays = timeDate::listHolidays()) |>
+    #step_holiday(`Policy.Start.Date`, holidays = timeDate::listHolidays()) |>
     step_rm(`Policy.Start.Date`)|>
     step_impute_median(all_numeric_predictors())|>
     step_unknown(all_nominal_predictors()) |>
@@ -205,21 +207,35 @@ vmod_v0.5$metadata$user$metrics  |>map_dbl(\(x)  x)
 ```
 
 
-```{r}
-tmp_df <- data.frame(v0.5=vmod_v0.5$model$object$fit$fit$object$fit$residuals,
-                     # v0.2=vmod_v0.2$model$object$fit$fit$object$fit$residuals
-                      v0.4=vmod_v0.4$model$object$fit$fit$object$fit$residuals
-#                      v0=vmod_v0$model$object$fit$fit$object$fit$residuals,
-                      )
- 
-  tmp_df|> pivot_longer(cols=c('v0.5','v0.4'),names_to = 'name') |>
-  ggplot(aes(x = value, fill = name)) +
-  geom_density(alpha = 0.2) +
-  labs(title = "Overlaid Density Plots", x = "Values", y = "Density") +
-  theme_minimal()
-  
-```
 
+### -6 v0.6 - manuall change year to dummy 
+```{r}
+
+get_vmod_v0.6 <- function(nrows=Inf){
+  df<- 
+    get_train()|>
+    select(-id)|>
+    rename(truth='Premium.Amount',
+           date = `Policy.Start.Date`)|>
+    collect()
+  
+  rcp <- 
+    recipes::recipe(truth ~.,df)|>
+    step_date(date, features = c("dow", "month","year")) |>
+    step_rm(date_year)|>
+    step_dummy() |>
+    #step_holiday(`Policy.Start.Date`, holidays = timeDate::listHolidays()) |>
+    step_impute_median(all_numeric_predictors())|>
+    step_unknown(all_nominal_predictors()) |>
+    step_pca(num_comp=50)
+  
+  vmod<- get_fit_wf(rcp,data = df,name='fillna numeric + date feature+year nominal_dummy_fillmod')
+  
+  
+}
+vmod_v0.6 <- get_vmod_v0.6()
+vmod_v0.6$metadata$user$metrics  |>map_dbl(\(x)  x)
+```
 
 ## 2.3 vetiver
 ### new 
@@ -241,10 +257,29 @@ keep_model <- function(mod=NULL) {
 }
 ```
 
-## version model
+## plot residual
+```{r}
+tmp_df <- data.frame(v0.5=vmod_v0.5$model$residuals,
+                     v0.6=vmod_v0.6$model$residuals,
+                     #v0.4=vmod_v0.4$model$object$fit$fit$object$fit$residuals,
+                     v0.1=vmod_v0$model$residuals
+) 
+ 
+  tmp_df|>
+  pivot_longer(cols=c('v0.1','v0.5','v0.6'),names_to = 'name') |>
+  ggplot(aes(x = value, color = name)) +
+  geom_density(alpha = 0.1) +
+  labs(title = "Overlaid Density Plots", x = "Values", y = "Density") +
+  theme_minimal()
+  
+```
 
 ```{r}
+get_train()|>select(id,date=`Policy.Start.Date`) |>cbind(tmp_df) |> group_by(year(date)) |> summarize(across(c(v0.1, v0.5,v0.6), list(mean = ~ mean(.x, na.rm = TRUE), sum = ~sum(.x,na.rm = T)),                                          .names = "{.col}.{.fn}")) |>round()
+```
 
+
+```{r}
 show_model_permformance <- function(metric_name='rmsel'){
   model_names <-model_board%>% pin_list() %>% set_names()
 

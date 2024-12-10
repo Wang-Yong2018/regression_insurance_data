@@ -43,7 +43,9 @@ get_fit_wf <- function(rcp,data,name){
   tidy_augment <-
     fit_mod |> 
     broom::augment() |>
-    select(truth=`..y`,.pred=`.fitted`)
+    select(truth=`..y`,
+           .pred=`.fitted`)|>
+    mutate(log1p_residual=log1p(.pred)-log1p(truth))
   
   rmsel_value <- 
     tidy_augment  |>
@@ -61,7 +63,8 @@ get_fit_wf <- function(rcp,data,name){
            rmsel=rmsel_value)
   
   fit_mod$qr <- NULL
-  fit_mod$residuals <- NULL
+ # fit_mod$residuals <- NULL
+  fit_mod$log_residual <- tidy_augment|>pull(log1p_residual)
   fit_mod$effects <- NULL
   fit_mod$na.action <- NULL
   fit_mod$model <- NULL
