@@ -78,7 +78,8 @@ get_vmod_v0.1 <- function() {
   rcp <- 
     recipes::recipe(truth ~.,df)|>
     step_rm(all_nominal())|>
-    step_rm(id)
+    step_rm(id)|>
+    step_pca(num_comp=50)
   
   vmod<- get_fit_wf(rcp,data = df,name='all numeric predictor')
   
@@ -103,7 +104,8 @@ get_vmod_v0.2 <- function(nrows=Inf){
   rcp <- 
     recipes::recipe(truth ~.,df)|>
     step_impute_median(all_numeric_predictors())|>
-    step_rm(all_nominal())
+    step_rm(all_nominal())|>
+    step_pca(num_comp=50)
   
   vmod<- get_fit_wf(rcp,data = df,name='fillna to all numeric predictor')
   
@@ -135,7 +137,8 @@ get_vmod_v0.3 <- function(nrows=Inf){
     step_holiday(`Policy.Start.Date`, holidays = timeDate::listHolidays()) |>
     step_rm(`Policy.Start.Date`)|>
     step_impute_median(all_numeric_predictors())|>
-    step_rm(all_nominal())
+    step_rm(all_nominal())|>
+    step_pca(num_comp=50)
   
   vmod<- get_fit_wf(rcp,data = df,name='fillna numeric + date feature')
   
@@ -164,7 +167,7 @@ get_vmod_v0.5 <- function(nrows=Inf){
     step_rm(`Policy.Start.Date`)|>
     step_impute_median(all_numeric_predictors())|>
     step_unknown(all_nominal_predictors()) |>
-    step_dummy()
+    step_pca(num_comp=50)
   
   vmod<- get_fit_wf(rcp,data = df,name='fillna numeric + date feature+ nominal_dummy_fillmod')
   
