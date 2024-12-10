@@ -224,16 +224,20 @@ get_vmod_v0.7 <- function(nrows=Inf){
     step_impute_median(all_numeric_predictors())|>
     step_unknown(all_nominal_predictors()) |>
     step_mutate(date_year = as_factor(date_year),
-               Vehicle.Age = log1p(Vehicle.Age),
                Annual.Income=log1p(Annual.Income),
-               Previous.Claims=log1p(Previous.Claims),
-               Insurance.Duration=as_factor(Insurance.Duration)) |>
+               #Previous.Claims=as_factor(Previous.Claims),
+               #Insurance.Duration=as_factor(Insurance.Duration)
+               ) |>
+    step_nzv()|>
     step_pca(num_comp=50)
   
-  vmod<- get_fit_wf(rcp,data = df,name='v0.7 mutate income, age, duration,claims')
+  vmod<- get_fit_wf(rcp,data = df,name='v0.7 mutate income')
   
 }
 vmod_v0.7 <- get_vmod_v0.7()
+```
+```{r}
+TODO know why some insurance premium amount was so low.
 ```
 
 ## 2.3 vetiver
