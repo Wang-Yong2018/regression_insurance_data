@@ -78,6 +78,7 @@ get_vmod_v0.1 <- function() {
   rcp <- 
     recipes::recipe(truth ~.,df)|>
     step_rm(all_nominal())|>
+    step_impute_median(all_numeric_predictors())|>
     step_rm(id)|>
     step_pca(num_comp=50)
   
@@ -194,8 +195,8 @@ get_vmod_v0.6 <- function(nrows=Inf){
   rcp <- 
     recipes::recipe(truth ~.,df)|>
     step_date(date, features = c("dow", "month","year")) |>
-    step_rm(date_year)|>
-    step_dummy() |>
+    step_mutate(date_year = as_factor(date_year)) |>
+    step_rm(date)|>
     #step_holiday(`Policy.Start.Date`, holidays = timeDate::listHolidays()) |>
     step_impute_median(all_numeric_predictors())|>
     step_unknown(all_nominal_predictors()) |>
@@ -208,8 +209,38 @@ get_vmod_v0.6 <- function(nrows=Inf){
 vmod_v0.6 <- get_vmod_v0.6()
 vmod_v0.6$metadata$user$metrics  |>map_dbl(\(x)  x)
 ```
-```
 
+### -7 v0.7 - log1p trans income and claims
+```{r}
+
+get_vmod_v0.7 <- function(nrows=Inf){
+  df<- 
+    get_train()|>
+    select(-id)|>
+    rename(truth='Premium.Amount',
+           date = `Policy.Start.Date`)|>
+    collect()
+  
+   rcp <- 
+    recipes::recipe(truth ~.,df)|>
+    step_date(date, features = c("dow", "month","year")) |>
+    step_rm(date)|>
+    #step_holiday(`Policy.Start.Date`, holidays = timeDate::listHolidays()) |>
+    step_impute_median(all_numeric_predictors())|>
+    step_unknown(all_nominal_predictors()) |>
+    step_mutate(date_year = as_factor(date_year),
+               Vehicle.Age = log1p(Vehicle.Age),
+               Annual.Income=log1p(Annual.Income),
+               Previous.Claims=log1p(Previous.Claims),
+               Insurance.Duration=as_factor(Insurance.Duration)) |>
+    step_pca(num_comp=50)
+  
+  vmod<- get_fit_wf(rcp,data = df,name='v0.7 mutate income, age, duration,claims')
+  
+}
+vmod_v0.7 <- get_vmod_v0.7()
+vmod_v0.7$metadata$user$metrics  |>map_dbl(\(x)  x)
+```
 
 ## 2.3 vetiver
 ## version model
@@ -237,15 +268,20 @@ show_model_permformance() %>%
 
 ## plot residual
 ```{r}
-tmp_df <- data.frame(v0.5=vmod_v0.5$model$residuals,
-                     v0.6=vmod_v0.6$model$residuals,
-                     #v0.4=vmod_v0.4$model$object$fit$fit$object$fit$residuals,
-                     v0.1=vmod_v0$model$residuals
+tmp_df <- data.frame(
+  v0=vmod_v0$model$log_residual,
+  #v0.2=vmod_v0.2$model$log_residual,
+  #v0.3=vmod_v0.3$model$log_residual,
+  #v0.5=vmod_v0.5$model$log_residual,
+  v0.6=vmod_v0.6$model$log_residual
+                     #v0.1=vmod_v0.1$model$log_residual
 ) 
  
   tmp_df|>
-  pivot_longer(cols=c('v0.1','v0.5','v0.6'),names_to = 'name') |>
-  ggplot(aes(x = value, color = name)) +
+  pivot_longer(cols=c('v0',
+                      #'v0.2','v0.5',
+                      'v0.6'),names_to = 'name') |>
+  ggplot(aes(x = value, fill = name,color=name)) +
   geom_density(alpha = 0.1) +
   labs(title = "Overlaid Density Plots", x = "Values", y = "Density") +
   theme_minimal()
@@ -253,5 +289,20 @@ tmp_df <- data.frame(v0.5=vmod_v0.5$model$residuals,
 ```
 
 ```{r}
-get_train()|>select(id,date=`Policy.Start.Date`) |>cbind(tmp_df) |> group_by(year(date)) |> summarize(across(c(v0.1, v0.5,v0.6), list(mean = ~ mean(.x, na.rm = TRUE), sum = ~sum(.x,na.rm = T)),                                          .names = "{.col}.{.fn}")) |>round()
+get_train()|>select(id,date=`Policy.Start.Date`) |>cbind(tmp_df) |> group_by(year(date)) |> summarize(across(c(v0.1, v0.5,v0.6), list(mean = ~ mean(.x, na.rm = TRUE), sum = ~sum(.x,na.rm = T)),                                          .names = "{.col}.{.fn}")) |>round(2)
+
+
 ```
+
+```{r}
+year_log_resi <- get_train()|>select(id,date=`Policy.Start.Date`) |>cbind(tmp_df) |> mutate(year_id = as_factor(year(date))) 
+
+year_log_resi|>
+  select(value=v0.6, year=year_id)|>
+  ggplot(aes(x = value, group=year,color = year)) +
+  geom_density(alpha = 0.3)+
+    labs(title = "Overlaid Density Plots", x = "Values", y = "Density") +
+  theme_minimal()
+
+```
+
