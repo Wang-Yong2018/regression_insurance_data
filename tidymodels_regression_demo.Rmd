@@ -58,11 +58,21 @@ get_vmod_v0 <- function(){
   rcp <- 
     recipes::recipe(truth ~ estimate, data=df)
   
+    # Get the call stack
+  
+  current_function_name <-
+    sys.calls() |>
+    as.character()|> 
+    gsub('()','',x=_,fixed=T)
+  
   vmod <- 
-    get_fit_wf(rcp,data = df,name='interception 1102.545')
+    get_fit_wf(rcp,
+               data = df,
+               name= current_function_name,
+               description='interception 1102.545')
   return(vmod)
 }
-vmod_v0 <- get_vmod_v0()
+# vmod_v0 <- get_vmod_v0()
 ```
 
 
@@ -82,13 +92,22 @@ get_vmod_v0.1 <- function() {
     step_rm(id)|>
     step_pca(num_comp=50)
   
-  vmod<- get_fit_wf(rcp,data = df,name='all numeric predictor')
   
+  current_function_name <-
+    sys.calls() |>
+    as.character()|> 
+    gsub('()','',x=_,fixed=T)
+  
+  vmod <- 
+    get_fit_wf(rcp,
+               data = df,
+               name= current_function_name,
+               description='all numeric predictor')
   return(vmod)
 
 }
 
-vmod_v0.1 <- get_vmod_v0.1()
+# vmod_v0.1 <- get_vmod_v0.1()
 ```
 
 ### -2). v0.2 start to use reciep
@@ -107,14 +126,21 @@ get_vmod_v0.2 <- function(nrows=Inf){
     step_rm(all_nominal())|>
     step_pca(num_comp=50)
   
-  vmod<- get_fit_wf(rcp,data = df,name='fillna to all numeric predictor')
+    current_function_name <-
+    sys.calls() |>
+    as.character()|> 
+    gsub('()','',x=_,fixed=T)
   
+  vmod <- 
+    get_fit_wf(rcp,
+               data = df,
+               name= current_function_name,
+               description='fillna to all numeric predictor')
   return(vmod)
-  
-  
+
 }
 
-vmod_v0.2 <- get_vmod_v0.2()
+# vmod_v0.2 <- get_vmod_v0.2()
 
 ```
 
@@ -139,11 +165,21 @@ get_vmod_v0.3 <- function(nrows=Inf){
     step_rm(all_nominal())|>
     step_pca(num_comp=50)
   
-  vmod<- get_fit_wf(rcp,data = df,name='fillna numeric + date feature')
+
+    current_function_name <-
+    sys.calls() |>
+    as.character()|> 
+    gsub('()','',x=_,fixed=T)
   
+    vmod <- 
+      get_fit_wf(rcp,
+                 data = df,
+                 name= current_function_name,
+                 description='fillna numeric + date feature')
+    return(vmod)
   
 }
-vmod_v0.3 <- get_vmod_v0.3()
+# vmod_v0.3 <- get_vmod_v0.3()
 
 
 ```
@@ -167,11 +203,21 @@ get_vmod_v0.5 <- function(nrows=Inf){
     step_unknown(all_nominal_predictors()) |>
     step_pca(num_comp=50)
   
-  vmod<- get_fit_wf(rcp,data = df,name='fillna numeric + date feature+ nominal_dummy_fillmod')
+  current_function_name <-
+    sys.calls() |>
+    as.character()|> 
+    gsub('()','',x=_,fixed=T)
+  
+    vmod <- 
+      get_fit_wf(rcp,
+                 data = df,
+                 name= current_function_name,
+                 description='fillna numeric + date feature+ nominal_dummy_fillmod')
+    return(vmod)
   
   
 }
-vmod_v0.5 <- get_vmod_v0.5()
+# vmod_v0.5 <- get_vmod_v0.5()
 
 ```
 
@@ -198,11 +244,21 @@ get_vmod_v0.6 <- function(nrows=Inf){
     step_unknown(all_nominal_predictors()) |>
     step_pca(num_comp=50)
   
-  vmod<- get_fit_wf(rcp,data = df,name='v0.6 fillna numeric + date feature+year nominal_dummy_fillmod')
   
+  current_function_name <-
+    sys.calls() |>
+    as.character()|> 
+    gsub('()','',x=_,fixed=T)
+  
+    vmod <- 
+      get_fit_wf(rcp,
+                 data = df,
+                 name= current_function_name,
+                 description='v0.6 fillna numeric + date feature+year nominal_dummy_fillmod')
+    return(vmod)
   
 }
-vmod_v0.6 <- get_vmod_v0.6()
+# vmod_v0.6 <- get_vmod_v0.6()
 ```
 
 ### -7 v0.7 - log1p trans income and claims
@@ -231,13 +287,73 @@ get_vmod_v0.7 <- function(nrows=Inf){
     step_nzv()|>
     step_pca(num_comp=50)
   
-  vmod<- get_fit_wf(rcp,data = df,name='v0.7 mutate income')
+  
+  current_function_name <-
+    sys.calls() |>
+    as.character()|> 
+    gsub('()','',x=_,fixed=T)
+  
+    vmod <- 
+      get_fit_wf(rcp,
+                 data = df,
+                 name= current_function_name,
+                 description='v0.7 mutate income')
+    return(vmod)
   
 }
 vmod_v0.7 <- get_vmod_v0.7()
 ```
+### -8 v0.8 - log1p trans premium amount
 ```{r}
-TODO know why some insurance premium amount was so low.
+
+get_vmod_v0.8 <- function(nrows=Inf){
+  df<- 
+    get_train()|>
+    select(-id)|>
+    rename(truth='Premium.Amount',
+           date = `Policy.Start.Date`)|>
+    mutate(truth=log1p(truth))|>
+    collect()
+  
+   rcp <- 
+    recipes::recipe(truth ~.,df)|>
+    step_date(date, features = c("dow", "month","year")) |>
+    step_rm(date)|>
+    #step_holiday(`Policy.Start.Date`, holidays = timeDate::listHolidays()) |>
+    step_impute_median(all_numeric_predictors())|>
+    step_unknown(all_nominal_predictors()) |>
+    step_mutate(
+
+      date_year = as_factor(date_year),
+      Annual.Income=log1p(Annual.Income),
+               #Previous.Claims=as_factor(Previous.Claims),
+               #Insurance.Duration=as_factor(Insurance.Duration)
+               ) |>
+    step_nzv()|>
+    step_pca(num_comp=50)
+  
+  
+  current_function_name <-
+    sys.calls() |>
+    as.character()|> 
+    gsub('()','',x=_,fixed=T)
+  
+    vmod <- 
+      get_fit_wf(rcp,
+                 data = df,
+                 name= current_function_name,
+                 description='v0.8. log1p trans premium amount based on v0.7',
+                 is_log1py = TRUE,
+                 return_wf = TRUE)
+    return(vmod)
+  
+}
+vmod_v0.8 <- get_vmod_v0.8()
+
+```
+
+```{r}
+#TODO know why some insurance premium amount was so low.
 ```
 
 ## 2.3 vetiver
@@ -246,12 +362,12 @@ TODO know why some insurance premium amount was so low.
 ```{r}
 show_model_permformance() %>% 
   mutate(id=fct_reorder(id,desc(.estimate))) %>%
-  ggplot(aes(x=id,xend=id,y = 1.12, yend=.estimate,fill=id)) +
+  ggplot(aes(x=id,xend=id,y = 1.05, yend=.estimate,fill=id)) +
   geom_segment(size=7,color='blue')+
   geom_text(aes(x = id, y = .estimate, label = .estimate), 
             hjust = -0.2, vjust = 0.5, size = 5, color = "red") +
   #geom_hline(yintercept = .estimate) +
-  scale_y_continuous(limits=c(1.12,1.2),
+  scale_y_continuous(limits=c(1.05,1.2),
                      #breaks= seq(0.8, 1.2,by = 0.1)
                      )+
   labs (title = 'model performance board',
@@ -266,21 +382,9 @@ show_model_permformance() %>%
 
 ## plot residual
 ```{r}
-tmp_df <- data.frame(
-  v0=vmod_v0$model$log_residual,
-  #v0.2=vmod_v0.2$model$log_residual,
-  #v0.3=vmod_v0.3$model$log_residual,
-  #v0.5=vmod_v0.5$model$log_residual,
-  v0.6=vmod_v0.6$model$log_residual,
-  v0.7=vmod_v0.7$model$log_residual
-                     #v0.1=vmod_v0.1$model$log_residual
-) 
+
  
-  tmp_df|>
-  pivot_longer(cols=c('v0',
-                      #'v0.2','v0.5',
-                      'v0.7',
-                      'v0.6'),names_to = 'name') |>
+  get_mods_log_residual(mod_name_pattern = 'v0.')|>
   ggplot(aes(x = value, fill = name,color=name)) +
   geom_density(alpha = 0.1) +
   labs(title = "Overlaid Density Plots", x = "Values", y = "Density") +
@@ -291,9 +395,9 @@ tmp_df <- data.frame(
 ```{r}
 get_train()|>
   select(id,date=`Policy.Start.Date`) |>
-  cbind(tmp_df) |>
+  cbind(get_mods_log_residual(mod_name_pattern = 'v0.8')) |>
   group_by(year(date)) |>
-  summarize(across(starts_with('v'),
+  summarize(across(starts_with('value'),
                    list(mean = ~ mean(.x, na.rm = TRUE),
                         sum = ~sum(.x,na.rm = T)
                         ), 
@@ -305,14 +409,40 @@ get_train()|>
 ```
 
 ```{r}
-year_log_resi <- get_train()|>select(id,date=`Policy.Start.Date`) |>cbind(tmp_df) |> mutate(year_id = as_factor(year(date))) 
+year_log_resi <- 
+  get_train()|>select(id,date=`Policy.Start.Date`) |>
+  cbind(get_mods_log_residual(mod_name_pattern = 'v0.8')|>filter(grepl('v0.8',name))) |> mutate(year_id = as_factor(year(date))) 
 
 year_log_resi|>
-  select(value=v0.7, year=year_id)|>
+  select(value, year=year_id)|>
   ggplot(aes(x = value, group=year,color = year)) +
   geom_density(alpha = 0.3)+
     labs(title = "Overlaid Density Plots", x = "Values", y = "Density") +
   theme_minimal()
 
+```
+# 3. predict and submit
+by use trained work flow to predict and submit
+```{r}
+best_mod <- vmod_v0.8
+save_submit <-function(best_mod ){
+  
+  submit_file_name <- 'output/sample_submit.csv_v0.1.gz'
+  
+  test_data <-  
+    get_test()|>
+    rename(date=Policy.Start.Date)
+
+  pred <- best_mod|>
+    predict(test_data)|>
+    pull(.pred)
+  
+  get_sample() |>
+    select(id) |>
+    mutate(`Premium Amount` = pred)|>
+    fwrite(submit_file_name,compress='gzip')
+}
+
+save_submit(vmod_v0.8)
 ```
 

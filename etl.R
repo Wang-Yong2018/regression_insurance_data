@@ -47,6 +47,7 @@ get_sample <- function(){
   file_name <- './input/sample_submission.csv'
   con <- get_duck_con()
   ddb <- dbReadTable(con,'sample')
+  
   dbDisconnect(con)
   return(ddb)
 }
@@ -54,7 +55,9 @@ get_sample <- function(){
 get_test <- function(){
   file_name <- './input/test.csv'
   con <- get_duck_con()
-  ddb <- dbReadTable(con,'test')
+  ddb <- 
+    dbReadTable(con,'test') |>
+    mutate(`Policy.Start.Date`=ymd_hms(`Policy.Start.Date`))
   dbDisconnect(con)
   return(ddb)
   

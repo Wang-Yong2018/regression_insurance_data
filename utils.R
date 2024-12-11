@@ -27,7 +27,7 @@ get_lm_wf<- function(){
 
 
 
-get_fit_wf <- function(rcp,data,name){
+get_fit_wf <- function(rcp,data,name='',description='', is_log1py=FALSE,return_wf=FALSE){
   
   lm_wf <- get_lm_wf()
   fit_wf <- lm_wf |>
@@ -44,9 +44,23 @@ get_fit_wf <- function(rcp,data,name){
     fit_mod |> 
     broom::augment() |>
     select(truth=`..y`,
-           .pred=`.fitted`)|>
-    mutate(log1p_residual=log1p(.pred)-log1p(truth))
+           .pred=`.fitted`)
   
+ if (is_log1py==TRUE) {
+   # if the outcome variable is log1p transformed in recipes.
+   # the .pred , truth should be reverse to original scale.
+   # as the log1p residual just minus
+  tidy_augment <-
+    tidy_augment |>
+    mutate(log1p_residual=.pred-truth,
+           .pred=exp(.pred)+1,
+           truth=exp(truth)+1)
+ } else(
+   
+  tidy_augment <-
+    tidy_augment |>
+    mutate(log1p_residual=log1p(.pred)-log1p(truth))
+ )
   rmsel_value <- 
     tidy_augment  |>
     rmsel(truth, .pred)|>
@@ -71,7 +85,8 @@ get_fit_wf <- function(rcp,data,name){
   
   
   vetiver_mod <-vetiver_model(model=fit_mod, 
-                              model_name = paste0(name) ,
+                              model_name = name ,
+                              description = {{description}},
                               metadata = list(metrics=glance_mod))
   
   vetiver_mod$metadata$user$metrics  |>
@@ -80,6 +95,12 @@ get_fit_wf <- function(rcp,data,name){
     print()
   
   keep_model(vetiver_mod)
-  return(vetiver_mod)
+  if(return_wf==TRUE){
+    result <- fit_wf
+  } else{
+    result <- fit_mod
+  }
+  return(result)
 }
+
 

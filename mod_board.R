@@ -16,6 +16,26 @@ keep_model <- function(mod=NULL) {
      vetiver_pin_write(mod) 
 }
 
+get_mods_log_residual<- function(mod_name_pattern = NULL) {
+  model_board <- get_model_board()
+  model_names <-
+    model_board |>
+    pin_list()|>
+    set_names()
+  
+  if (!is.null(mod_name_pattern)){
+    model_names <-
+      model_names |>
+      keep(\(name) grepl(mod_name_pattern,name))
+  }
+  
+  metric_result <- 
+    model_names |> 
+    map(\(name)  
+      model_board |> pin_read(name) |>  pluck('model','log_residual') |>  as_tibble() ) |>
+    list_rbind( names_to = "name") #  per column list_cbind,   per vector list_c
+  
+}
 
 
 show_model_permformance <- function(metric_name='rmsel'){
