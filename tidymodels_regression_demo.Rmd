@@ -409,7 +409,8 @@ get_vmod_v0.10 <- function(nrows=Inf){
            date = `Policy.Start.Date`)|>
     #mutate(truth=log1p(truth))|>
     collect()
-  
+  income_pct <- get_train() |> pull(Annual.Income) |>quantile(x=_,probs=seq(0,1,0.2),na.rm=TRUE,include.lowest=T)
+  age_pct <- get_train() |> pull(Age) |>quantile(x=_,probs=seq(0,1,0.2),na.rm=TRUE,include.lowest=T)
    rcp <- 
     recipes::recipe(truth ~.,df)|>
     step_log(truth,offset=1) |>
@@ -419,12 +420,14 @@ get_vmod_v0.10 <- function(nrows=Inf){
     #step_holiday(`Policy.Start.Date`, holidays = timeDate::listHolidays()) |>
     step_impute_median(all_numeric_predictors())|>
     step_unknown(all_nominal_predictors()) |>
+    step_cut(Annual.Income,breaks=income_pct,include_outside_range=TRUE)|>
+    step_cut(Age,breaks=age_pct,include_outside_range=TRUE)|>
     step_mutate(
       date_year = as_factor(date_year),
       Insurance.Duration = as_factor(Insurance.Duration),
       Previous.Claims = as_factor(Previous.Claims),
-      Number.of.Dependents = as_factor(Number.of.Dependents),
-      Annual.Income=log1p(Annual.Income),
+      Number.of.Dependents = as_factor(Number.of.Dependents)
+     # Annual.Income=log1p(Annual.Income),
                ) |>
     step_nzv()|>
     step_pca(num_comp=50)
@@ -439,7 +442,7 @@ get_vmod_v0.10 <- function(nrows=Inf){
       get_fit_wf(rcp,
                  data = df,
                  name= current_function_name,
-                 description='v0.10. add more factor variable', 
+                 description='v0.10. add cut age, income', 
                  is_log1py = TRUE,
                  return_wf = TRUE)
     return(vmod)
@@ -538,7 +541,7 @@ show_model_permformance() %>%
 ```{r}
 
  
-  get_mods_log_residual(mod_name_pattern = 'vmod_v0.')|>
+  get_mods_log_residual(mod_name_pattern = 'vmod_v0.10|vmod_v0.8')|>
   ggplot(aes(x = value, fill = name,color=name)) +
   geom_density(alpha = 0.1) +
   labs(title = "Overlaid Density Plots", x = "Values", y = "Density") +
