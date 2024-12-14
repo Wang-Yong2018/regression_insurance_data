@@ -678,7 +678,7 @@ get_vmod_v1.0 <- function(nrows = Inf) {
       rcp,
       data = df,
       name = current_function_name,
-      description = 'v0.11. add cut age, income',
+      description = 'v1.01',
       is_log1py = TRUE,
       return_wf = TRUE
     )
@@ -687,32 +687,17 @@ get_vmod_v1.0 <- function(nrows = Inf) {
 }
 vmod_v1.0 <- get_vmod_v1.0()
 ```
-
-
-
-### eda rpart tree plot 
+### -v1.01 - as.factor to add more value
 ```{r}
-library(tidymodels)
-library(rpart.plot)
-library(vip)
-tree_spec <- 
-  decision_tree(cost_complexity = 0.001, 
-                min_n =100,
-                tree_depth=8) |>
-  set_engine("rpart",model=TRUE)
 
-reg_tree_spec <- 
-  tree_spec |> 
-  set_mode("regression")
-
-set.seed(1234)
-
- df <-
+get_vmod_v1.01 <- function(nrows = Inf) {
+    df <-
     get_train() |>
-    select(-id) |>
+    #select(-id) |>
     rename(truth = 'Premium.Amount', date = `Policy.Start.Date`) |>
     #mutate(truth=log1p(truth))|>
     collect()
+  
   income_pct <- get_train() |> pull(Annual.Income) |> quantile(
     x = _,
     probs = seq(0, 1, 0.2),
@@ -731,8 +716,22 @@ set.seed(1234)
     na.rm = TRUE,
     include.lowest = T
     )
+  Credit_pct <- get_train()|>pull(Credit.Score)|> quantile(
+    x=_, 
+    probs=seq(0,1,0.1),
+    na.rm = TRUE,
+    include.lowest = T
+    )
+  Health_pct <- get_train()|>pull(Health.Score)|> quantile(
+    x=_, 
+    probs=seq(0,1,0.1),
+    na.rm = TRUE,
+    include.lowest = T
+    )
+  
   rcp <-
     recipes::recipe(truth ~ ., df) |>
+    update_role(id, new_role='ID')|>
     step_log(truth, offset = 1) |>
     step_date(date, features = c("dow", "month", "year")) |>
     #    step_time(date, features= c('second'))|>
@@ -740,46 +739,191 @@ set.seed(1234)
     step_impute_median(all_numeric_predictors()) |>
     step_unknown(all_nominal_predictors()) |>
     step_mutate(
-      Annual.Income_cut = cut(Annual.Income, 
-                              breaks = income_pct,
-                              include_outside_range = TRUE ),
-      Age_cut = cut(Age, 
-                    breaks = age_pct, 
-                    include_outside_range = TRUE), 
-      date_cut = cut(date,
-                     breaks = date_pct,
-                     include_outside_range = TRUE) ) |>
+      Annual.Income_cut = cut(Annual.Income,  breaks = income_pct, include.lowest=TRUE, include_outside_range = TRUE ),
+      Credit.Score_cut = cut(Credit.Score,  breaks = Credit_pct,  include.lowest=TRUE, include_outside_range = TRUE ),
+      Health.Score_cut = cut(Health.Score,  breaks = Health_pct,  include.lowest=TRUE, include_outside_range = TRUE ),
+      Age_cut = cut(Age,  breaks = age_pct,  include.lowest=TRUE, include_outside_range = TRUE ),
+      date_cut = cut(date, breaks = date_pct, include.lowest=TRUE,  include_outside_range = TRUE))|>
     step_mutate(
+      Annual.Income_cut = as.factor(Annual.Income_cut),
+      Credit.Score_cut = as.factor(Credit.Score_cut),
+      Health.Score_cut = as.factor(Health.Score_cut),
+      Age_cut = as.factor(Age_cut),
+      date_cut = as.factor(date_cut),
       date_year = as_factor(date_year),
       Insurance.Duration = as_factor(Insurance.Duration),
       Previous.Claims = as_factor(Previous.Claims),
-      Number.of.Dependents = as_factor(Number.of.Dependents)
-      # Annual.Income=log1p(Annual.Income),
+      Number.of.Dependents = as_factor(Number.of.Dependents),
+      Gender=factor(Gender, levels = c("Male", "Female"), ordered = TRUE),
+      Education.Level=factor(Education.Level, levels = c( "High School","Bachelor's","Master's", "PhD"), ordered = TRUE),
+      Occupation=factor(Occupation, levels = c("Unemployed","Employed","Self-Employed","NA"), ordered = TRUE),
+      Policy.Type=factor(Policy.Type, levels = c("Basic","Comprehensive", "Premium"), ordered = TRUE),
+      Customer.Feedback=factor(Customer.Feedback, levels = c("Poor","Average",NA,"Good"), ordered = TRUE),
+      Exercise.Frequency=factor(Exercise.Frequency, levels = c("Daily","Weekly",  "Monthly","Rarely"), ordered = TRUE),
+      Smoking.Status=factor(Smoking.Status, levels = c("No","Yes"), ordered = TRUE),
+      Property.Type=factor(Property.Type, levels = c("Apartment","Condo","House"), ordered = TRUE),
+      
     ) |>
-    step_nzv() |>
     step_rm(date) |>
-    step_pca(num_comp = 50)|>
-     prep()|>bake(new_data=df)
+    #step_dummy_hash(all_nominal_predictors(),num_terms=16)|>
+    step_nzv() #|>
+    #step_pca(all_predictors(),num_comp = 50)
   
+  #rcp|>prep()|> print()
+ 
+  current_function_name <-
+    sys.calls() |>
+    as.character() |>
+    gsub('()', '', x = _, fixed = T)
   
-reg_tree_fit <- fit(reg_tree_spec, truth ~ ., rcp)
-reg_tree_fit %>%
-  extract_fit_engine() %>%
-  rpart.plot()
-
+  vmod <-
+    get_fit_wf(
+      rcp,
+      data = df,
+      name = current_function_name,
+      description = 'v0.11. add cut age, income',
+      is_log1py = TRUE,
+      return_wf = TRUE
+    )
+  return(vmod)
+  
+}
+vmod_v1.01 <- get_vmod_v1.01()
 ```
-
+### -v1.02 - add grp_col featuure which as seqency id 
 ```{r}
-#TODO know why some insurance premium amount was so low.
+
+get_vmod_v1.02 <- function(nrows = Inf) {
+  df <-get_train()
+  
+  result_pct <- df|> get_cut_pct()
+  grp_col <- df |>get_grp_feature()
+  
+  df <-
+    df |>
+    #select(-id) |>
+    rename(truth = 'Premium.Amount', date = `Policy.Start.Date`) |>
+    #mutate(truth=log1p(truth))|>
+    collect()
+
+  df<-
+    df|>
+    left_join(grp_col,by='id')
+  
+  # income_pct <- get_train() |> pull(Annual.Income) |> quantile(
+  #   x = _,
+  #   probs = seq(0, 1, 0.2),
+  #   na.rm = TRUE,
+  #   include.lowest = T
+  # )
+  # age_pct <- get_train() |> pull(Age) |> quantile(
+  #   x = _,
+  #   probs = seq(0, 1, 0.2),
+  #   na.rm = TRUE,
+  #   include.lowest = T
+  # )
+  # date_pct <- get_train()|>pull(Policy.Start.Date)|> quantile(
+  #   x=_, 
+  #   probs=seq(0,1,0.05),
+  #   na.rm = TRUE,
+  #   include.lowest = T
+  #   )
+  # Credit_pct <- get_train()|>pull(Credit.Score)|> quantile(
+  #   x=_, 
+  #   probs=seq(0,1,0.1),
+  #   na.rm = TRUE,
+  #   include.lowest = T
+  #   )
+  # Health_pct <- get_train()|>pull(Health.Score)|> quantile(
+  #   x=_, 
+  #   probs=seq(0,1,0.1),
+  #   na.rm = TRUE,
+  #   include.lowest = T
+  #   )
+  # 
+
+  rcp <-
+    recipes::recipe(truth ~ ., df) |>
+    update_role(id, new_role='ID')|>
+    step_log(truth, offset = 1) |>
+   #  step_date(date, features = c("dow", "month", "year")) |>
+   #  #    step_time(date, features= c('second'))|>
+   #  #step_holiday(`Policy.Start.Date`, holidays = timeDate::listHolidays()) |>
+   #  
+   #  step_mutate(
+   #    Annual.Income_cut = cut(Annual.Income,  breaks = result_pct$income_pct, include.lowest=TRUE, include_outside_range = TRUE ),
+   #    Credit.Score_cut = cut(Credit.Score,  breaks = result_pct$Credit_pct,  include.lowest=TRUE, include_outside_range = TRUE ),
+   #    Health.Score_cut = cut(Health.Score,  breaks = result_pct$Health_pct,  include.lowest=TRUE, include_outside_range = TRUE ),
+   #    Age_cut = cut(Age,  breaks = result_pct$age_pct,  include.lowest=TRUE, include_outside_range = TRUE ),
+   #    date_cut = cut(date, breaks = result_pct$date_pct, include.lowest=TRUE,  include_outside_range = TRUE))|>
+   #  step_mutate(
+   #    Annual.Income_cut = as.factor(Annual.Income_cut),
+   #    Credit.Score_cut = as.factor(Credit.Score_cut),
+   #    Health.Score_cut = as.factor(Health.Score_cut),
+   #    Age_cut = as.factor(Age_cut),
+   #    date_cut = as.factor(date_cut),
+   #    date_year = as_factor(date_year),
+   #    Insurance.Duration = as_factor(Insurance.Duration),
+   #    Previous.Claims = as_factor(Previous.Claims),
+   #    Number.of.Dependents = as_factor(Number.of.Dependents),
+   #    Gender=factor(Gender, levels = c("Male", "Female"), ordered = TRUE),
+   #    Education.Level=factor(Education.Level, levels = c( "High School","Bachelor's","Master's", "PhD"), ordered = TRUE),
+   #    Occupation=factor(Occupation, levels = c("Unemployed","Employed","Self-Employed","NA"), ordered = TRUE),
+   #    Policy.Type=factor(Policy.Type, levels = c("Basic","Comprehensive", "Premium"), ordered = TRUE),
+   #    Customer.Feedback=factor(Customer.Feedback, levels = c("Poor","Average",NA,"Good"), ordered = TRUE),
+   #    Exercise.Frequency=factor(Exercise.Frequency, levels = c("Daily","Weekly",  "Monthly","Rarely"), ordered = TRUE),
+   #    Smoking.Status=factor(Smoking.Status, levels = c("No","Yes"), ordered = TRUE),
+   #    Property.Type=factor(Property.Type, levels = c("Apartment","Condo","House"), ordered = TRUE),
+   #    
+   #  ) |>
+   # step_impute_median(all_numeric_predictors()) |>
+   #  step_unknown(all_nominal_predictors()) |>
+   #  step_rm(date) |>
+   #  #step_dummy_hash(all_nominal_predictors(),num_terms=16)|>
+    step_nzv(all_numeric_predictors()) #|>
+    #step_pca(all_predictors(),num_comp = 50)
+  
+ #tmp_baked <- rcp|>prep()|>check_missing(all_predictors())|> bake(df|>head(1000)) 
+ #tmp_baked <-NULL
+  
+  current_function_name <-
+    sys.calls() |>
+    as.character() |>
+    gsub('()', '', x = _, fixed = T)
+  
+  vmod <-
+    get_fit_wf(
+      rcp,
+      data = df,
+      name = current_function_name,
+      description = 'v1.02 add grouped feature',
+      is_log1py = TRUE,
+      return_wf = TRUE
+    )
+  return(vmod)
+  
+}
+vmod_v1.02 <- get_vmod_v1.02()
 ```
+
 ### - v1.x
 ```{r}
-# TODO build user group identity and find if they buy some insurance.
-# TODO 20 price buying pattern related to time
-# TODO the dataset was generated by deep learning process. find the pattern
+#DONE know why some insurance premium amount was so low - Annaul income is very important
+#DONE 20 price buying pattern related to time. False. everyday. happened. it related to group people. 
+# TODO is there pattern that, group by high price insuance first and then buy low price. later. It may related to time series .2019-early of 2020 is very high.  and people
+
+# DONE the dataset was generated by deep learning process. find the pattern. continue. it break down to several new.
+
+# DONE use decision tree or forest to eda. plot tree showed Annual income is key.
+
+
+# DONE-skip. add null count per row variable. recipe has no such built in feature
+# DONE-skip modify miss na with group instead of whole. recipe not support
+# Done-still build user group identity and find if they buy some insurance.
+# Done-skip add daily total,avg , mean ,sd based on train basedon group 
+# TODO add sequency id
 # TODO publish notebook
-# TODO use decision tree or forest to eda 
-# TODO add null count per row variable.
+
 ```
 
 ## 2.3 vetiver
@@ -787,14 +931,14 @@ reg_tree_fit %>%
 
 ```{r}
 show_model_permformance() %>% 
-  filter(grepl('vmod',id))|>
+  filter(grepl('vmod',id) & .estimate <1.1)|>
   mutate(id=fct_reorder(id,desc(.estimate))) %>%
-  ggplot(aes(x=id,xend=id,y = 1.05, yend=.estimate,fill=id)) +
+  ggplot(aes(x=id,xend=id,y = 1.0, yend=.estimate,fill=id)) +
   geom_segment(size=7,color='blue')+
   geom_text(aes(x = id, y = .estimate, label = .estimate), 
             hjust = -0.2, vjust = 0.5, size = 5, color = "red") +
   #geom_hline(yintercept = .estimate) +
-  scale_y_continuous(limits=c(1.05,1.2),
+  scale_y_continuous(limits=c(1.0,2.10),
                      #breaks= seq(0.8, 1.2,by = 0.1)
                      )+
   labs (title = 'model performance board',
@@ -811,7 +955,7 @@ show_model_permformance() %>%
 ```{r}
 
  
-  get_mods_log_residual(mod_name_pattern = 'vmod_v0.1|vmod_v1')|>
+  get_mods_log_residual(mod_name_pattern = 'vmod_v1')|>
   ggplot(aes(x = value, fill = name,color=name)) +
   geom_density(alpha = 0.1) +
   labs(title = "Overlaid Density Plots", x = "Values", y = "Density") +
@@ -871,5 +1015,110 @@ save_submit <-function(best_mod ){
 }
 
 save_submit(vmod_v0.8)
+```
+
+
+
+### eda rpart tree plot 
+```{r}
+library(tidymodels)
+library(rpart.plot)
+library(vip)
+tree_spec <- 
+  decision_tree(cost_complexity = 0.001, 
+                min_n =100,
+                tree_depth=8) |>
+  set_engine("rpart",model=TRUE)
+
+reg_tree_spec <- 
+  tree_spec |> 
+  set_mode("regression")
+
+set.seed(1234)
+
+ df <-
+    get_train() |>
+    #select(-id) |>
+    rename(truth = 'Premium.Amount', date = `Policy.Start.Date`) |>
+    #mutate(truth=log1p(truth))|>
+    collect()
+  
+  income_pct <- get_train() |> pull(Annual.Income) |> quantile(
+    x = _,
+    probs = seq(0, 1, 0.2),
+    na.rm = TRUE,
+    include.lowest = T
+  )
+  age_pct <- get_train() |> pull(Age) |> quantile(
+    x = _,
+    probs = seq(0, 1, 0.2),
+    na.rm = TRUE,
+    include.lowest = T
+  )
+  date_pct <- get_train()|>pull(Policy.Start.Date)|> quantile(
+    x=_, 
+    probs=seq(0,1,0.05),
+    na.rm = TRUE,
+    include.lowest = T
+    )
+  Credit_pct <- get_train()|>pull(Credit.Score)|> quantile(
+    x=_, 
+    probs=seq(0,1,0.1),
+    na.rm = TRUE,
+    include.lowest = T
+    )
+  Health_pct <- get_train()|>pull(Health.Score)|> quantile(
+    x=_, 
+    probs=seq(0,1,0.1),
+    na.rm = TRUE,
+    include.lowest = T
+    )
+  
+  rcp <-
+    recipes::recipe(truth ~ ., df) |>
+    update_role(id, new_role='ID')|>
+    step_log(truth, offset = 1) |>
+    step_date(date, features = c("dow", "month", "year")) |>
+    #    step_time(date, features= c('second'))|>
+    #step_holiday(`Policy.Start.Date`, holidays = timeDate::listHolidays()) |>
+    step_impute_median(all_numeric_predictors()) |>
+    step_unknown(all_nominal_predictors()) |>
+    step_mutate(
+      Annual.Income_cut = cut(Annual.Income,  breaks = income_pct, include.lowest=TRUE, include_outside_range = TRUE ),
+      Credit.Score_cut = cut(Credit.Score,  breaks = Credit_pct,  include.lowest=TRUE, include_outside_range = TRUE ),
+      Health.Score_cut = cut(Health.Score,  breaks = Health_pct,  include.lowest=TRUE, include_outside_range = TRUE ),
+      Age_cut = cut(Age,  breaks = age_pct,  include.lowest=TRUE, include_outside_range = TRUE ),
+      date_cut = cut(date, breaks = date_pct, include.lowest=TRUE,  include_outside_range = TRUE))|>
+    step_mutate(
+      Annual.Income_cut = as.factor(Annual.Income_cut),
+      Credit.Score_cut = as.factor(Credit.Score_cut),
+      Health.Score_cut = as.factor(Health.Score_cut),
+      Age_cut = as.factor(Age_cut),
+      date_cut = as.factor(date_cut),
+      date_year = as_factor(date_year),
+      Insurance.Duration = as_factor(Insurance.Duration),
+      Previous.Claims = as_factor(Previous.Claims),
+      Number.of.Dependents = as_factor(Number.of.Dependents),
+      Gender=factor(Gender, levels = c("Male", "Female"), ordered = TRUE),
+      Education.Level=factor(Education.Level, levels = c( "High School","Bachelor's","Master's", "PhD"), ordered = TRUE),
+      Occupation=factor(Occupation, levels = c("Unemployed","Employed","Self-Employed","NA"), ordered = TRUE),
+      Policy.Type=factor(Policy.Type, levels = c("Basic","Comprehensive", "Premium"), ordered = TRUE),
+      Customer.Feedback=factor(Customer.Feedback, levels = c("Poor","Average",NA,"Good"), ordered = TRUE),
+      Exercise.Frequency=factor(Exercise.Frequency, levels = c("Daily","Weekly",  "Monthly","Rarely"), ordered = TRUE),
+      Smoking.Status=factor(Smoking.Status, levels = c("No","Yes"), ordered = TRUE),
+      Property.Type=factor(Property.Type, levels = c("Apartment","Condo","House"), ordered = TRUE),
+      
+    ) |>
+    step_rm(date) |>
+    #step_dummy_hash(all_nominal_predictors(),num_terms=16)|>
+    step_nzv() |>
+    prep()|>bake(new_data=df)
+  
+  
+reg_tree_fit <- fit(reg_tree_spec, truth ~ ., rcp)
+reg_tree_fit %>%
+  extract_fit_engine() %>%
+  rpart.plot()
+
 ```
 
