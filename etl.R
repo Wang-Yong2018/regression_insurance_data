@@ -5,6 +5,12 @@ library(dbplyr)
 library(purrr)
 library(vetiver)
 library(lubridate)
+library(moments)
+library(memoise)
+
+cm <- cachem::cache_mem(max_size = 500*2**20)
+
+
 
 init_db <- function(do=FALSE) {
   if (do==TRUE) {
@@ -79,3 +85,151 @@ get_colname_by_type <- function(type='numeric'){
   colnames <- sample_df_filted |> colnames()
   return(colnames)
 }
+
+
+
+get_cut_pct <- function(df) {
+  
+  income_pct <- df |> pull(Annual.Income) |> quantile(
+    x = _,
+    probs = seq(0, 1, 0.05),
+    na.rm = TRUE,
+    include.lowest = T
+  )
+  age_pct <- df|> pull(Age) |> quantile(
+    x = _,
+    probs = seq(0, 1, 0.1),
+    na.rm = TRUE,
+    include.lowest = T
+  )
+  date_pct <- df|>pull(Policy.Start.Date)|> quantile(
+    x=_, 
+    probs=seq(0,1,0.05),
+    na.rm = TRUE,
+    include.lowest = T
+  )
+  Credit_pct <-df |>pull(Credit.Score)|> quantile(
+    x=_, 
+    probs=seq(0,1,0.1),
+    na.rm = TRUE,
+    include.lowest = T
+  )
+  Health_pct <- df|>pull(Health.Score)|> quantile(
+    x=_, 
+    probs=seq(0,1,0.1),
+    na.rm = TRUE,
+    include.lowest = T
+  )
+  
+  result<-list('income_pct'=income_pct,
+               'age_pct'=age_pct,
+               'date_pct'=date_pct,
+               'Credit_pct'=Credit_pct,
+               'Health_pct'=Health_pct)
+  return(result) 
+}
+
+internal_get_grp_feature<- function(df){
+  grp_col <-c('Gender','Marital.Status',
+              'Number.of.Dependents', 'Education.Level',
+              'Occupation','Location', 'Policy.Type',
+              'Smoking.Status',
+              'Exercise.Frequency',
+              'Property.Type' )
+  result_pct <- df|>get_cut_pct() 
+  tmp_df <- df|>
+    collect()|>
+    mutate( Annual.Income_cut = cut(Annual.Income,  breaks = result_pct$income_pct, include.lowest=TRUE),
+            Credit.Score_cut = cut(Credit.Score,  breaks = result_pct$Credit_pct,  include.lowest=TRUE),
+            Health.Score_cut = cut(Health.Score,  breaks = result_pct$Health_pct,  include.lowest=TRUE),
+            Age_cut = cut(Age,  breaks = result_pct$age_pct,  include.lowest=TRUE)
+            
+    )
+  grp_df <-
+    tmp_df |>
+    group_by(across(all_of(grp_col)),.drop=TRUE ) |>
+    summarise(
+      cnt=n(),
+      mean_income=mean(Annual.Income,na.rm=TRUE),
+      mean_age=mean(Age,na.rm=TRUE),
+      #min_premium = mean(Premium.Amount),
+      #max_premium = max(Premium.Amount),
+      #sd_premium =  coalesce(sd(Premium.Amount),0),
+      ids=list(id),
+      .groups = 'drop') |>
+    ungroup()|>
+    select(-c(grp_col))|>
+    unnest_longer(col=ids,values_to='id',indices_to='id_seq')|>
+    arrange(id)
+  
+  
+  return(grp_df)
+}
+get_grp_feature <- memoise(internal_get_grp_feature, cache = cm)
+
+
+get_prepared_df <- function(df){
+  
+} 
+
+
+internal_get_weekly_premium <- function(){
+
+  weekly_df <-
+    get_train()|>
+    mutate(date=Policy.Start.Date, year=year(date),month=month(date),week=week(date),wday=wday(date))|>
+    select(date, year, week,wday, Premium.Amount)|>
+    collect() |>
+    group_by(year,week,wday) |>
+    summarize(
+      avg=mean(Premium.Amount,na.rm=TRUE),
+      max=max(Premium.Amount,na.rm=TRUE),
+      min=min(Premium.Amount,na.rm=TRUE),
+      sd=sd(Premium.Amount,na.rm=TRUE),
+      median=median(Premium.Amount,na.rm=TRUE),
+      skewness=skewness(Premium.Amount,na.rm=TRUE),
+      kurtosis=kurtosis(Premium.Amount,na.rm=TRUE),
+      weekly_cnt=n(),
+      first=first(Premium.Amount,na.rm=TRUE),
+      last=last(Premium.Amount,na.rm=TRUE),
+      .groups='drop')
+ return(weekly_df) 
+}
+get_weekly_premium <- memoise(internal_get_weekly_premium, cache = cm)
+
+
+get_enrich_weekly_premium<-function(df){
+  weekly_premium_df <- get_weekly_premium()
+  weekly_id_df <- 
+    df |>   
+    mutate(date=Policy.Start.Date, year=year(date),month=month(date),week=week(date),wday=wday(date))|>
+    select(id, date, year, week,wday) |>
+    collect()|>
+    left_join(weekly_premium_df,by=c('year','week','wday'))|>
+    select(-c('year','week','wday','date'))
+  return(weekly_id_df)
+}
+
+get_enrich_df <- function(input_df){
+  df <- input_df
+  
+  result_pct <- df|> get_cut_pct()
+  grp_col <- df |>get_grp_feature()
+  
+  weekly_premium_df <- df|>get_enrich_weekly_premium()
+  
+  enriched_df <-
+    df |> 
+    rename(date = `Policy.Start.Date`) |>
+    collect()|>
+    left_join(grp_col,by='id')|>
+    left_join(weekly_premium_df,by='id')
+  
+  if ('Premium.Amount' %in% names(enriched_df)) {
+    enriched_df <- enriched_df |>
+      rename(truth=Premium.Amount)
+  }
+  
+ return(enriched_df ) 
+}
+  
