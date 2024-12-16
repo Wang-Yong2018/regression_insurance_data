@@ -62,7 +62,13 @@ show_model_permformance <- function(metric_name='rmsel'){
   
 }
 
-
+get_mod <- function(name){
+  model_board <- get_model_board()
+  vetiver_mod <- 
+    model_board|>
+    pin_read(name={{name}})
+  return(vetiver_mod)
+}
 # 
 # library(vetiver)
 # library(pins)

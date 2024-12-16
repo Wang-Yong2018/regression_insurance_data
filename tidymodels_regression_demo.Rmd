@@ -303,7 +303,7 @@ get_vmod_v0.7 <- function(nrows=Inf){
     return(vmod)
   
 }
-vmod_v0.7 <- get_vmod_v0.7()
+# vmod_v0.7 <- get_vmod_v0.7()
 ```
 ### -8 v0.8 - log1p trans premium amount
 ```{r}
@@ -395,7 +395,7 @@ get_vmod_v0.9 <- function(nrows=Inf){
     return(vmod)
   
 }
-vmod_v0.9 <- get_vmod_v0.9()
+# vmod_v0.9 <- get_vmod_v0.9()
 
 ```
 ### -v0.10 - cut some numeric into group
@@ -494,7 +494,7 @@ get_vmod_v0.10 <- function(nrows = Inf) {
   return(vmod)
   
 }
-vmod_v0.10 <- get_vmod_v0.10()
+# vmod_v0.10 <- get_vmod_v0.10()
 
 ```
 ### -v0.11 - cut some numeric into group and convert the group as factor
@@ -589,7 +589,7 @@ get_vmod_v0.11 <- function(nrows = Inf) {
   return(vmod)
   
 }
-vmod_v0.11 <- get_vmod_v0.11()
+# vmod_v0.11 <- get_vmod_v0.11()
 
 ```
 ### -v1.0 - solve the cut include_lowest default value lead to missing data issue 
@@ -684,7 +684,7 @@ get_vmod_v1.0 <- function(nrows = Inf) {
   return(vmod)
   
 }
-vmod_v1.0 <- get_vmod_v1.0()
+# vmod_v1.0 <- get_vmod_v1.0()
 ```
 ### -v1.01 - as.factor to add more value
 ```{r}
@@ -787,7 +787,7 @@ get_vmod_v1.01 <- function(nrows = Inf) {
   return(vmod)
   
 }
-vmod_v1.01 <- get_vmod_v1.01()
+# vmod_v1.01 <- get_vmod_v1.01()
 ```
 ### -v1.02 - add grp_col featuure which as seqency id 
 ```{r}
@@ -867,7 +867,7 @@ get_vmod_v1.02 <- function(nrows = Inf) {
   return(vmod)
   
 }
-vmod_v1.02 <- get_vmod_v1.02()
+# vmod_v1.02 <- get_vmod_v1.02()
 ```
 ### -v1.03 - add grp_col featuure and seconds features
 ```{r}
@@ -883,7 +883,7 @@ get_vmod_v1.03 <- function(nrows = Inf) {
   
   rcp <-
     recipes::recipe(truth ~ ., df) |>
-    step_log(truth, offset = 1) |>
+    step_log(all_outcomes(), offset = 1,skip=TRUE) |>
     update_role(id, new_role='ID')|>
     step_date(date, features = c("dow", "month", "year")) |>
     step_time(date, features= c('second'))|>
@@ -919,8 +919,10 @@ get_vmod_v1.03 <- function(nrows = Inf) {
     step_unknown(all_nominal_predictors()) |>
     step_rm(date) |>
     step_nzv(all_numeric_predictors()) |>
-    step_pca(all_numeric_predictors(),num_comp = 50) |>
-    check_missing(all_predictors())
+    step_pca(all_numeric_predictors(),num_comp = 50) 
+    #check_missing(all_predictors())
+  
+  #rcp|>summary()
   
   current_function_name <-
     sys.calls() |>
@@ -956,7 +958,7 @@ vmod_v1.03 <- get_vmod_v1.03()
 # DONE-skip modify miss na with group instead of whole. recipe not support
 # Done-still build user group identity and find if they buy some insurance.
 # Done-skip add daily total,avg , mean ,sd based on train basedon group 
-# TODO add sequency id
+# DONE - add sequency id
 # TODO publish notebook
 
 ```
@@ -990,7 +992,7 @@ show_model_permformance() %>%
 ```{r}
 
  
-  get_mods_log_residual(mod_name_pattern = 'v1.02|v1.03')|>
+  get_mods_log_residual(mod_name_pattern = 'get_vmod_v0.9|v1.03')|>
   ggplot(aes(x = value, fill = name,color=name)) +
   geom_density(alpha = 0.1) +
   labs(title = "Overlaid Density Plots", x = "Values", y = "Density") +
@@ -1033,7 +1035,7 @@ by use trained work flow to predict and submit
 best_mod <- vmod_v1.03
 save_submit <-function(best_mod ){
   
-  submit_file_name <- 'output/sample_submit.csv_v1.02.gz'
+  submit_file_name <- 'output/sample_submit.csv_v1.03.gz'
   
   df <-get_test()
   
@@ -1049,7 +1051,8 @@ save_submit <-function(best_mod ){
   
   get_sample() |>
     select(id) |>
-    mutate(`Premium Amount` = pred)|>
+    collect()|>
+    mutate(`Premium Amount` = exp(pred)-1)|>
     fwrite(submit_file_name,compress='gzip')
 }
 
