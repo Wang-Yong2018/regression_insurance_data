@@ -26,6 +26,20 @@ get_lm_wf<- function(){
     add_model(lm_spec)
 }
 
+get_lgb_wf<- function(n_trees= 300, rate=0.001){
+  
+  lgb_spec <- boost_tree(
+    # trees = n_trees(),
+    # learn_rate = rate
+  ) %>%
+    set_engine("lightgbm") %>%
+    set_mode("regression")
+  
+  lm_wf <-
+    workflow() |>
+    add_model(lgb_spec)
+  
+}
 
 
 get_fit_wf <- function(rcp,data,name='',description='', is_log1py=FALSE,return_wf=FALSE){

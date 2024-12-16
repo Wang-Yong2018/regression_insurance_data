@@ -8,8 +8,15 @@ output: html_document
 ```{r setup, include=FALSE}
 knitr::opts_chunk$set(echo = TRUE)
 library(tidyverse)
+
 library(data.table)
 library(tidymodels)
+
+library(lightgbm)
+library(bonsai)
+library(parsnip)
+library(recipes)
+library(dplyr)
 source('etl.R')
 source('utils.R')
 source('mod_board.R')
@@ -943,6 +950,93 @@ get_vmod_v1.03 <- function(nrows = Inf) {
 }
 vmod_v1.03 <- get_vmod_v1.03()
 ```
+
+### -v1.04 - using lightgbm
+```{r}
+
+get_vmod_v1.04 <- function(nrows = Inf) {
+  df <-get_train()
+  
+  result_pct <- df|> get_cut_pct()
+  grp_col <- df |>get_grp_feature()
+  
+  df<-
+    df|>get_enrich_df()
+  
+  rcp <-
+    recipes::recipe(truth ~ ., df) |>
+    step_log(all_outcomes(), offset = 1,skip=TRUE) |>
+    update_role(id, new_role='ID')|>
+    step_date(date, features = c("dow", "month", "year")) |>
+    step_time(date, features= c('second'))|>
+    #step_holiday(`Policy.Start.Date`, holidays = timeDate::listHolidays()) |>
+
+    step_mutate(
+      Annual.Income_cut = cut(Annual.Income,  breaks = result_pct$income_pct, include.lowest=TRUE, include_outside_range = TRUE ),
+      Credit.Score_cut = cut(Credit.Score,  breaks = result_pct$Credit_pct,  include.lowest=TRUE, include_outside_range = TRUE ),
+      Health.Score_cut = cut(Health.Score,  breaks = result_pct$Health_pct,  include.lowest=TRUE, include_outside_range = TRUE ),
+      Age_cut = cut(Age,  breaks = result_pct$age_pct,  include.lowest=TRUE, include_outside_range = TRUE ),
+      date_cut = cut(date, breaks = result_pct$date_pct, include.lowest=TRUE,  include_outside_range = TRUE))|>
+    step_mutate(
+      Annual.Income_cut = as.factor(Annual.Income_cut),
+      Credit.Score_cut = as.factor(Credit.Score_cut),
+      Health.Score_cut = as.factor(Health.Score_cut),
+      Age_cut = as.factor(Age_cut),
+      date_cut = as.factor(date_cut),
+      date_year = as_factor(date_year),
+      Insurance.Duration = as_factor(Insurance.Duration),
+      Previous.Claims = as_factor(Previous.Claims),
+      Number.of.Dependents = as_factor(Number.of.Dependents),
+      Gender=factor(Gender, levels = c("Male", "Female"), ordered = TRUE),
+      Education.Level=factor(Education.Level, levels = c( "High School","Bachelor's","Master's", "PhD"), ordered = TRUE),
+      Occupation=factor(Occupation, levels = c("Unemployed","Employed","Self-Employed","NA"), ordered = TRUE),
+      Policy.Type=factor(Policy.Type, levels = c("Basic","Comprehensive", "Premium"), ordered = TRUE),
+      Customer.Feedback=factor(Customer.Feedback, levels = c("Poor","Average",NA,"Good"), ordered = TRUE),
+      Exercise.Frequency=factor(Exercise.Frequency, levels = c("Daily","Weekly",  "Monthly","Rarely"), ordered = TRUE),
+      Smoking.Status=factor(Smoking.Status, levels = c("No","Yes"), ordered = TRUE),
+      Property.Type=factor(Property.Type, levels = c("Apartment","Condo","House"), ordered = TRUE),
+
+    ) |>
+    step_impute_median(all_numeric_predictors()) |>
+    step_unknown(all_nominal_predictors()) |>
+    step_rm(date) |>
+    step_nzv(all_numeric_predictors()) |>
+    step_pca(all_numeric_predictors(),num_comp = 50) 
+    #check_missing(all_predictors())
+  
+  #rcp|>summary()
+  
+  current_function_name <-
+    sys.calls() |>
+    as.character() |>
+    gsub('()', '', x = _, fixed = T)
+  
+  
+  lgb_wf <- get_lgb_wf(n_trees=500, rate=0.0005)
+  fit_wf <- lgb_wf |>
+    add_recipe(rcp)|>
+    fit(data = df) 
+  
+  fit_mod <- 
+    fit_wf |> 
+    extract_fit_engine()
+  #tmp_baked <- rcp|>prep()|>check_missing(all_predictors())|> bake(data) 
+  # 
+  # vmod <-
+  #   get_fit_wf(
+  #     rcp,
+  #     data = df,
+  #     name = current_function_name,
+  #     description = 'v1.04 lightgbm with v1.03 feature',
+  #     is_log1py = TRUE,
+  #     return_wf = TRUE
+  #   )
+  return(fit_wf)
+  
+}
+vmod_v1.04 <- get_vmod_v1.04()
+```
+
 ### - v1.x
 ```{r}
 #DONE know why some insurance premium amount was so low - Annaul income is very important
@@ -959,6 +1053,7 @@ vmod_v1.03 <- get_vmod_v1.03()
 # Done-still build user group identity and find if they buy some insurance.
 # Done-skip add daily total,avg , mean ,sd based on train basedon group 
 # DONE - add sequency id
+# DONE - the Premium Amount first digit 4,5,6,7,8,9 do not follow ben ford role. when ding sampling, it should be considered.
 # TODO publish notebook
 
 ```
