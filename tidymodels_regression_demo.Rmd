@@ -1016,30 +1016,7 @@ get_vmod_v1.04 <- function(nrows = Inf) {
   # 
   # 
   # 
-  mod_spec <- boost_tree( #mtry = 50,
-                          stop_iter = 50,
-                          # p/3 for regression case, p is total feature numbers
-                          min_n = 100,
-                          trees = 500,
-                          tree_depth=15,
-                          learn_rate=0.1,
-                          sample_size=0.8,
-                          loss_reduction = 0.01)|>
-     set_mode("regression")|>
-     set_engine("lightgbm",
-                num_leaves=1000,
-                lambda_l2 = 0.1,
-                lambda_l1 = 0.1,
-               # early_stopping_rounds = 50,
-    #            categorical_feature = which(sapply(df, is.factor)) - 1,
-                verbose=1)
-
-   fit_wf <-
-     workflow()|>
-     add_model(mod_spec)|>
-     add_recipe(rcp)|>
-     fit(df)
-  return(fit_wf)
+ 
   # fit_mod <- 
   #   fit_wf |> 
   #   extract_fit_engine()
@@ -1054,16 +1031,16 @@ get_vmod_v1.04 <- function(nrows = Inf) {
   #   fit_wf |> 
   #   extract_fit_engine()
    
-  # vmod <-
-  #   get_fit_wf(
-  #     rcp,
-  #     data = df,
-  #     name = current_function_name,
-  #     description = 'v1.04 lightgbm with v1.03 feature',
-  #     is_log1py = TRUE,
-  #     return_wf = TRUE
-  #   )
-  # return(fit_wf)
+  vmod <-
+    get_fit_lgb_wf(
+      rcp,
+      data = df,
+      name = current_function_name,
+      description = 'v1.04 lightgbm with v1.03 feature',
+      is_log1py = TRUE,
+      return_wf = TRUE
+    )
+  return(vmod)
   
 }
 vmod_v1.04 <- get_vmod_v1.04()
