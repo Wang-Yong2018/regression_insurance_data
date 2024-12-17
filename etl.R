@@ -40,7 +40,7 @@ get_duck_con <- function() {
   return(con)
 }
 
-get_train <- function(){
+get_train_old <- function(){
   con <- get_duck_con()
   ddb <-
     tbl(con,'train') |>
@@ -51,11 +51,25 @@ get_train <- function(){
   return(ddb)
 }
 
+get_train <- function(){
+  con <- get_duck_con()
+  ddb <-
+    tbl(con,'train') |>
+    mutate(
+      microsecond = as.numeric(substring(Policy.Start.Date,20,29)),
+      Policy.Start.Date = as_datetime(Policy.Start.Date))
+  #dbReadTable(con,'train_t')|> 
+  
+  #dbDisconnect(con)
+  return(ddb)
+}
 get_test <- function(){
   con <- get_duck_con()
   ddb <- 
     tbl(con,'test')|>
-    mutate(Policy.Start.Date=as_datetime(Policy.Start.Date))
+    mutate(
+      microsecond = as.numeric(substring(Policy.Start.Date,20,29)),
+      Policy.Start.Date = as_datetime(Policy.Start.Date))
   
    # dbReadTable(con,'test') |>
   #dbDisconnect(con)
@@ -102,6 +116,12 @@ get_cut_pct <- function(df) {
     na.rm = TRUE,
     include.lowest = T
   )
+  microsecond_pct <- df|>pull(microsecond)|> quantile(
+    x=_, 
+    probs=seq(0,1,0.2),
+    na.rm = TRUE,
+    include.lowest = T
+  )
   date_pct <- df|>pull(Policy.Start.Date)|> quantile(
     x=_, 
     probs=seq(0,1,0.05),
@@ -123,6 +143,7 @@ get_cut_pct <- function(df) {
   
   result<-list('income_pct'=income_pct,
                'age_pct'=age_pct,
+               'microsecond_pct'=microsecond_pct,
                'date_pct'=date_pct,
                'Credit_pct'=Credit_pct,
                'Health_pct'=Health_pct)
@@ -231,5 +252,9 @@ get_enrich_df <- function(input_df){
   }
   
  return(enriched_df ) 
+}
+
+get_rcp <-function(df){
+  
 }
   

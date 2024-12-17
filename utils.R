@@ -24,15 +24,29 @@ get_lm_wf<- function(){
   lm_wf <-
     workflow() |>
     add_model(lm_spec)
+  return(lm_wf)
 }
 
-get_lgb_wf<- function(n_trees= 300, rate=0.001){
+get_lgb_wf<- function(n_trees= 1000, rate=0.005,n_depth=10,n_leaves=768, n_leaves_min=100,min_gain_to_split=0.0001){
   
   lgb_spec <- boost_tree(
-    # trees = n_trees(),
-    # learn_rate = rate
+    trees = n_trees,
+    tree_depth = n_depth,
+    learn_rate = rate,
+    sample_size = 0.85
   ) %>%
-    set_engine("lightgbm") %>%
+    set_engine("lightgbm",
+               verbose=1,
+               force_row_wise=TRUE,
+               early_stopping_rounds = 50,
+               metric = "rmse",
+               num_leaves = n_leaves,          # Limit the number of leaves
+               max_depth = n_depth,             # Limit tree depth
+               min_gain_to_split = min_gain_to_split,  # Require a minimum gain for splits
+               lambda_l1 = 0.01,           # Apply L1 regularization
+               lambda_l2 = 0.01,            # Apply L2 regularization
+               num_leaves = n_leaves, 
+               min_data_in_leaf = n_leaves_min) %>%
     set_mode("regression")
   
   lm_wf <-
