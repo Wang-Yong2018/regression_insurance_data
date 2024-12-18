@@ -9,9 +9,8 @@ output: html_document
 knitr::opts_chunk$set(echo = TRUE)
 library(tidyverse)
 
-library(data.table)
 library(tidymodels)
-
+library(lubridate)
 library(lightgbm)
 library(bonsai)
 library(parsnip)
@@ -952,7 +951,100 @@ get_vmod_v1.03 <- function(nrows = Inf) {
 }
 vmod_v1.03 <- get_vmod_v1.03()
 ```
+### -v1.03_b - basedon v1.03 and revise dummy feature
+```{r}
 
+get_vmod_v1.03_b <- function(nrows = Inf) {
+  df <-get_train()
+  
+  result_pct <- df|> get_cut_pct()
+  grp_col <- df |>get_grp_feature()
+  
+  df<-
+    df|>get_enrich_df()
+  
+  rcp <-
+    recipes::recipe(truth ~ ., df) |>
+    step_log(all_outcomes(), offset = 1,skip=TRUE) |>
+    update_role(id, new_role='ID')|>
+    step_date(date, features = c("dow", "month", "year")) |>
+    step_time(date, features= c('second'))|>
+    #step_holiday(`Policy.Start.Date`, holidays = timeDate::listHolidays()) |>
+
+    step_mutate(
+      Annual.Income_cut = cut(Annual.Income,  breaks = result_pct$income_pct, include.lowest=TRUE, include_outside_range = TRUE ),
+      Credit.Score_cut = cut(Credit.Score,  breaks = result_pct$Credit_pct,  include.lowest=TRUE, include_outside_range = TRUE ),
+      Health.Score_cut = cut(Health.Score,  breaks = result_pct$Health_pct,  include.lowest=TRUE, include_outside_range = TRUE ),
+      Age_cut = cut(Age,  breaks = result_pct$age_pct,  include.lowest=TRUE, include_outside_range = TRUE ),
+      microsecond_cut = cut(microsecond,  breaks = result_pct$microsecond_pct,  include.lowest=TRUE, include_outside_range = TRUE ),
+      date_cut = cut(date, breaks = result_pct$date_pct, include.lowest=TRUE,  include_outside_range = TRUE))|>
+    step_mutate(
+      Annual.Income_cut = as.factor(Annual.Income_cut),
+      Credit.Score_cut = as.factor(Credit.Score_cut),
+      Health.Score_cut = as.factor(Health.Score_cut),
+      Age_cut = as.factor(Age_cut),
+      microsecond_cut = as.factor(microsecond_cut),
+      date_cut = as.factor(date_cut),
+      date_year = as_factor(date_year),
+      Insurance.Duration = as_factor(Insurance.Duration),
+      Previous.Claims = as_factor(Previous.Claims),
+      Number.of.Dependents = as_factor(Number.of.Dependents),
+      Gender = factor(Gender, levels = c("Male", "Female"), ordered = TRUE),
+      Education.Level =factor(Education.Level, levels = c( "High School","Bachelor's","Master's", "PhD"), ordered = TRUE),
+      Occupation=factor(Occupation, levels = c("Unemployed","Employed","Self-Employed","NA"), ordered = TRUE),
+      Policy.Type =factor(Policy.Type, levels = c("Basic","Comprehensive", "Premium"), ordered = TRUE),
+      Customer.Feedback=factor(Customer.Feedback, levels = c("Poor","Average",NA,"Good"), ordered = TRUE),
+      Exercise.Frequency=factor(Exercise.Frequency, levels = c("Daily","Weekly",  "Monthly","Rarely"), ordered = TRUE),
+      Smoking.Status=factor(Smoking.Status, levels = c("No","Yes"), ordered = TRUE),
+      Property.Type=factor(Property.Type, levels = c("Apartment","Condo","House"), ordered = TRUE),
+
+    ) |>
+
+    step_impute_median(all_numeric_predictors()) |>
+    step_unknown(all_nominal_predictors()) |>
+    step_rm(date) |>
+    step_dummy(Annual.Income_cut,
+               Credit.Score_cut,
+               Health.Score_cut,
+               Age_cut,
+               microsecond_cut,
+               date_cut,
+               date_year,
+               Insurance,
+               Previous.Claims,
+               Number.of.Dependents,
+               Gender,
+               Education.Level,
+               Property.Type,
+               Customer.Feedback,
+               Exercise.Frequency,
+               Smoking.Status,
+               Property.Type)|>
+    step_nzv(all_numeric_predictors()) |>
+    step_pca(all_numeric_predictors(),num_comp = 50) 
+    #check_missing(all_predictors())
+  
+  #rcp|>summary()
+  
+  current_function_name <-
+    sys.calls() |>
+    as.character() |>
+    gsub('()', '', x = _, fixed = T)
+  
+  vmod <-
+    get_fit_wf(
+      rcp,
+      data = df,
+      name = current_function_name,
+      description = 'v1.03_b add grouped feature & seconds feature',
+      is_log1py = TRUE,
+      return_wf = TRUE
+    )
+  return(vmod)
+  
+}
+vmod_v1.03_b <- get_vmod_v1.03_b()
+```
 ### -v1.04 - using lightgbm
 ```{r}
 

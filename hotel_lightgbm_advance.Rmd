@@ -8,10 +8,10 @@ output: html_document
 # Init
 ```{r setup, include=FALSE}
 knitr::opts_chunk$set(echo = TRUE)
-# pkgs <- 
-#   c("bonsai", "Cubist", "doParallel", "earth", "embed", "finetune", 
-#     "forested", "lightgbm", "lme4", "parallelly", "plumber", "probably", 
-#     "ranger", "rpart", "rpart.plot", "rules", "splines2", "stacks", 
+# pkgs <-
+#   c("bonsai", "Cubist", "doParallel", "earth", "embed", "finetune",
+#     "forested", "lightgbm", "lme4", "parallelly", "plumber", "probably",
+#     "ranger", "rpart", "rpart.plot", "rules", "splines2", "stacks",
 #     "text2vec", "textrecipes", "tidymodels", "vetiver")
 # 
 # install.packages(pkgs)
@@ -751,7 +751,7 @@ Let’s take our previous model and tune more parameters:
 lgbm_spec <- 
   boost_tree(trees = tune(), learn_rate = tune(),  min_n = tune()) %>% 
   set_mode("regression") %>% 
-  set_engine("lightgbm", num_threads = 1)
+  set_engine("lightgbm", num_threads = 8)
 
 lgbm_wflow <- workflow(hash_rec, lgbm_spec)
 
@@ -804,11 +804,12 @@ lgbm_res
 
 Grid results
 ```{r}
+lgbm_res 
 autoplot(lgbm_res)
 ```
 #### Tuning results 1
 ```{r}
-collect_metrics(lgbm_res)
+
 #> # A tibble: 50 × 11
 #>    trees min_n learn_rate `agent hash` `company hash` .metric .estimator   mean     n std_err .config              
 #>    <int> <int>      <dbl>        <int>          <int> <chr>   <chr>       <dbl> <int>   <dbl> <chr>                
@@ -826,6 +827,9 @@ collect_metrics(lgbm_res)
 ```
 #### result 2
 ```{r}
+lgbm_res 
+autoplot(lgbm_res)
+collect_metrics(lgbm_res)
 collect_metrics(lgbm_res, summarize = FALSE)
 #> # A tibble: 500 × 10
 #>    id     trees min_n    learn_rate `agent hash` `company hash` .metric .estimator .estimate .config              
@@ -845,6 +849,10 @@ collect_metrics(lgbm_res, summarize = FALSE)
 
 ## Choose a parameter combination
 ```{r}
+lgbm_res 
+autoplot(lgbm_res)
+collect_metrics(lgbm_res)
+collect_metrics(lgbm_res, summarize = FALSE)
 show_best(lgbm_res, metric = "rsq")
 #> # A tibble: 5 × 11
 #>   trees min_n learn_rate `agent hash` `company hash` .metric .estimator  mean     n std_err .config              
@@ -860,7 +868,11 @@ show_best(lgbm_res, metric = "rsq")
 Create your own tibble for final parameters or use one of the tune::select_*() functions:
 ```{r}
 
-
+lgbm_res 
+autoplot(lgbm_res)
+collect_metrics(lgbm_res)
+collect_metrics(lgbm_res, summarize = FALSE)
+show_best(lgbm_res, metric = "rsq")
 lgbm_best <- select_best(lgbm_res, metric = "mae")
 lgbm_best
 #> # A tibble: 1 × 6
@@ -871,7 +883,7 @@ lgbm_best
 ```
 
 
-## Checking Calibration
+### Checking Calibration
 ```{r}
 
 library(probably)
@@ -898,9 +910,19 @@ cores <- parallelly::availableCores(logical = FALSE)
 cl <- parallel::makePSOCKcluster(cores)
 doParallel::registerDoParallel(cl)
 
-# Now call `tune_grid()`!
+set.seed(9)
+ctrl <- control_grid(save_pred = TRUE)
 
-# Shut it down with:
+lgbm_res <-
+  lgbm_wflow %>%
+  tune_grid(
+    resamples = hotel_rs,
+    grid = 25,
+    # The options below are not required by default
+    param_info = lgbm_param, 
+    control = ctrl,
+    metrics = reg_metrics
+  )
 foreach::registerDoSEQ()
 parallel::stopCluster(cl)
 
@@ -908,6 +930,29 @@ parallel::stopCluster(cl)
 
 ```{r}
 
+
+lgbm_res 
+autoplot(lgbm_res)
+collect_metrics(lgbm_res)
+collect_metrics(lgbm_res, summarize = FALSE)
+show_best(lgbm_res, metric = "rsq")
+lgbm_best <- select_best(lgbm_res, metric = "mae")
+lgbm_best
+
+```
+
+### Checking Calibration
+```{r}
+
+library(probably)
+lgbm_res %>%
+  collect_predictions(
+    parameters = lgbm_best
+  ) %>%
+  cal_plot_regression(
+    truth = avg_price_per_room,
+    estimate = .pred
+  )
 ```
 
 
@@ -1027,13 +1072,31 @@ lgbm_grid <-
 library(finetune)
 
 set.seed(9)
+
+# lgbm_race_res <-
+#   lgbm_wflow %>%
+#   tune_race_anova(
+#     resamples = hotel_rs,
+#     grid = lgbm_grid,
+#     metrics = reg_metrics
+#   )
+
+
+cores <- parallelly::availableCores(logical = FALSE)
+cl <- parallel::makePSOCKcluster(cores)
+doParallel::registerDoParallel(cl)
+set.seed(9)
+
 lgbm_race_res <-
   lgbm_wflow %>%
   tune_race_anova(
     resamples = hotel_rs,
-    grid = lgbm_grid, 
+    grid = lgbm_grid,
     metrics = reg_metrics
   )
+
+foreach::registerDoSEQ()
+parallel::stopCluster(cl)
 ```
 The syntax and helper functions are extremely similar to those shown for tune_grid().
 
