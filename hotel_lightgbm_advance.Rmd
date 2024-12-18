@@ -1,0 +1,1062 @@
+---
+title: "Hotel lightgbm"
+author: "WY"
+date: "`r Sys.Date()`"
+output: html_document
+---
+
+# Init
+```{r setup, include=FALSE}
+knitr::opts_chunk$set(echo = TRUE)
+# pkgs <- 
+#   c("bonsai", "Cubist", "doParallel", "earth", "embed", "finetune", 
+#     "forested", "lightgbm", "lme4", "parallelly", "plumber", "probably", 
+#     "ranger", "rpart", "rpart.plot", "rules", "splines2", "stacks", 
+#     "text2vec", "textrecipes", "tidymodels", "vetiver")
+# 
+# install.packages(pkgs)
+# rlang::check_installed("dials", version = "1.3.0")
+
+library(tidymodels)
+
+# Max's usual settings: 
+tidymodels_prefer()
+theme_set(theme_bw())
+options(
+  pillar.advice = FALSE, 
+  pillar.min_title_chars = Inf
+)
+
+# Add another package:
+library(textrecipes)
+reg_metrics <- metric_set(mae, rsq)
+
+```
+
+# Hotel data
+```{r}
+
+data(hotel_rates)
+set.seed(295)
+hotel_rates <- 
+  hotel_rates %>% 
+  sample_n(5000) %>% 
+  arrange(arrival_date) %>% 
+  select(-arrival_date) %>% 
+  mutate(
+    company = factor(as.character(company)),
+    country = factor(as.character(country)),
+    agent = factor(as.character(agent))
+  )
+```
+
+## Hotel data columns
+```{r}
+names(hotel_rates)
+#>  [1] "avg_price_per_room"             "lead_time"                     
+#>  [3] "stays_in_weekend_nights"        "stays_in_week_nights"          
+#>  [5] "adults"                         "children"                      
+#>  [7] "babies"                         "meal"                          
+#>  [9] "country"                        "market_segment"                
+#> [11] "distribution_channel"           "is_repeated_guest"             
+#> [13] "previous_cancellations"         "previous_bookings_not_canceled"
+#> [15] "reserved_room_type"             "assigned_room_type"            
+#> [17] "booking_changes"                "agent"                         
+#> [19] "company"                        "days_in_waiting_list"          
+#> [21] "customer_type"                  "required_car_parking_spaces"   
+#> [23] "total_of_special_requests"      "arrival_date_num"              
+#> [25] "near_christmas"                 "near_new_years"                
+#> [27] "historical_adr"
+```
+## eda outcome average price per month
+```{r}
+hotel_rates|>select(avg_price_per_room) |>skimr::skim()
+```
+
+## mutate
+```{r}
+data(hotel_rates)
+set.seed(295)
+hotel_rates <- 
+  hotel_rates %>% 
+  sample_n(5000) %>% 
+  arrange(arrival_date) %>% 
+  select(-arrival_date) %>% 
+  mutate(
+    company = factor(as.character(company)),
+    country = factor(as.character(country)),
+    agent = factor(as.character(agent))
+  )
+```
+
+
+# Data splitting strategy
+
+## Data Spending
+Let’s split the data into a training set (75%) and testing set (25%) using stratification:
+```{r}
+set.seed(4028)
+hotel_split <- initial_split(hotel_rates, strata = avg_price_per_room)
+
+hotel_train <- training(hotel_split)
+hotel_test <- testing(hotel_split)
+
+set.seed(472)
+hotel_rs <- vfold_cv(hotel_train, strata = avg_price_per_room)
+
+```
+We’ll go from here and create a set of resamples to use for model assessments.
+
+# Resampling Strategy
+
+## Resampling Strategy
+We’ll use simple 10-fold cross-validation (stratified sampling):
+```{r}
+set.seed(472)
+hotel_rs <- vfold_cv(hotel_train, strata = avg_price_per_room)
+hotel_rs
+#> #  10-fold cross-validation using stratification 
+#> # A tibble: 10 × 2
+#>    splits             id    
+#>    <list>             <chr> 
+#>  1 <split [3372/377]> Fold01
+#>  2 <split [3373/376]> Fold02
+#>  3 <split [3373/376]> Fold03
+#>  4 <split [3373/376]> Fold04
+#>  5 <split [3373/376]> Fold05
+#>  6 <split [3374/375]> Fold06
+#>  7 <split [3375/374]> Fold07
+#>  8 <split [3376/373]> Fold08
+#>  9 <split [3376/373]> Fold09
+#> 10 <split [3376/373]> Fold10
+```
+# Prepare your data for modeling
+The recipes package is an extensible framework for pipeable sequences of preprocessing and feature engineering steps.
+Statistical parameters for the steps can be estimated from an initial data set and then applied to other data sets.
+The resulting processed output can be used as inputs for statistical or machine learning models.
+## A first recipe
+```{r}
+hotel_rec <- 
+  recipe(avg_price_per_room ~ ., data = hotel_train)
+
+```
+## A first recipe
+```{r}
+summary(hotel_rec)
+#> # A tibble: 27 × 4#>    variable                type      role      source  
+#>    <chr>                   <list>    <chr>     <chr>   
+#>  1 lead_time               <chr [2]> predictor original
+#>  2 stays_in_weekend_nights <chr [2]> predictor original
+#>  3 stays_in_week_nights    <chr [2]> predictor original
+#>  4 adults                  <chr [2]> predictor original
+#>  5 children                <chr [2]> predictor original
+#>  6 babies                  <chr [2]> predictor original
+#>  7 meal                    <chr [3]> predictor original
+#>  8 country                 <chr [3]> predictor original
+#>  9 market_segment          <chr [3]> predictor original
+#> 10 distribution_channel    <chr [3]> predictor original
+#> # ℹ 17 more rows
+```
+## Create indicator variables
+```{r}
+
+hotel_rec <- 
+  recipe(avg_price_per_room ~ ., data = hotel_train) %>% 
+  step_dummy(all_nominal_predictors())
+
+```
+
+## Filter out constant columns
+
+```{r}
+hotel_rec <- 
+  recipe(avg_price_per_room ~ ., data = hotel_train) %>% 
+  step_dummy(all_nominal_predictors()) %>% 
+  step_zv(all_predictors())
+```
+
+In case there is a factor level that was never observed in the training data (resulting in a column of all 0s), we can delete any zero-variance predictors that have a single unique value.
+
+Note that the selector chooses all columns with a role of “predictor”
+
+## Normalization
+```{r}
+hotel_rec <- 
+  recipe(avg_price_per_room ~ ., data = hotel_train) %>% 
+  step_dummy(all_nominal_predictors()) %>% 
+  step_zv(all_predictors()) %>% 
+  step_normalize(all_numeric_predictors())
+```
+
+This centers and scales the numeric predictors.
+
+The recipe will use the training set to estimate the means and standard deviations of the data.
+
+All data the recipe is applied to will be normalized using those statistics (there is no re-estimation).
+
+## Reduce correlation
+
+```{r}
+
+hotel_rec <- 
+  recipe(avg_price_per_room ~ ., data = hotel_train) %>% 
+  step_dummy(all_nominal_predictors()) %>% 
+  step_zv(all_predictors()) %>% 
+  step_normalize(all_numeric_predictors()) %>% 
+  step_corr(all_numeric_predictors(), threshold = 0.9)
+
+```
+## Other possible steps - pca
+```{r}
+hotel_rec <- 
+  recipe(avg_price_per_room ~ ., data = hotel_train) %>% 
+  step_dummy(all_nominal_predictors()) %>% 
+  step_zv(all_predictors()) %>% 
+  step_normalize(all_numeric_predictors()) %>% 
+  step_pca(all_numeric_predictors())
+```
+## Other possible steps - umap
+```{r}
+hotel_rec <- 
+  recipe(avg_price_per_room ~ ., data = hotel_train) %>% 
+  step_dummy(all_nominal_predictors()) %>% 
+  step_zv(all_predictors()) %>% 
+  step_normalize(all_numeric_predictors()) %>% 
+  embed::step_umap(all_numeric_predictors(), outcome = vars(avg_price_per_room))
+```
+A fancy machine learning supervised dimension reduction technique called UMAP…
+
+Note that this uses the outcome, and it is from an extension package
+
+## Other possible steps
+```{r}
+hotel_rec <- 
+  recipe(avg_price_per_room ~ ., data = hotel_train) %>% 
+  step_dummy(all_nominal_predictors()) %>% 
+  step_zv(all_predictors()) %>% 
+  step_normalize(all_numeric_predictors()) %>% 
+  step_spline_natural(arrival_date_num, deg_free = 10)
+```
+Nonlinear transforms like natural splines, and so on! https://aml4td.org/chapters/interactions-nonlinear.html#sec-splines
+
+## Minimal recipe
+```{r}
+hotel_indicators <-
+  recipe(avg_price_per_room ~ ., data = hotel_train) %>% 
+  step_YeoJohnson(lead_time) %>%
+  step_dummy(all_nominal_predictors()) %>%
+  step_zv(all_predictors()) %>% 
+  step_spline_natural(arrival_date_num, deg_free = 10)
+```
+
+# Measuring Performance
+We’ll compute two measures: mean absolute error and the coefficient of determination (a.k.a \(R^2\)).
+
+\[\begin{align} MAE &= \frac{1}{n}\sum_{i=1}^n |y_i - \hat{y}_i| \notag \\ R^2 &= cor(y_i, \hat{y}_i)^2 \end{align}\]
+
+The focus will be on MAE for parameter optimization. We’ll use a metric set to compute these:
+```{r}
+
+reg_metrics <- metric_set(mae, rsq)
+```
+
+# Using a workflow
+```{r}
+set.seed(9)
+
+hotel_lm_wflow <-
+  workflow() %>%
+  add_recipe(hotel_indicators) %>%
+  add_model(linear_reg())
+ 
+ctrl <- control_resamples(save_pred = TRUE)
+hotel_lm_res <-
+  hotel_lm_wflow %>%
+  fit_resamples(hotel_rs, control = ctrl, metrics = reg_metrics)
+
+collect_metrics(hotel_lm_res)
+#> # A tibble: 2 × 6
+#>   .metric .estimator   mean     n std_err .config             
+#>   <chr>   <chr>       <dbl> <int>   <dbl> <chr>               
+#> 1 mae     standard   16.6      10 0.214   Preprocessor1_Model1
+#> 2 rsq     standard    0.884    10 0.00339 Preprocessor1_Model1
+```
+# Holdout predictions
+```{r}
+# Since we used `save_pred = TRUE`
+lm_cv_pred <- collect_predictions(hotel_lm_res)
+lm_cv_pred %>% print(n = 7)
+#> # A tibble: 3,749 × 5
+#>   .pred id      .row avg_price_per_room .config             
+#>   <dbl> <chr>  <int>              <dbl> <chr>               
+#> 1  75.1 Fold01    20                 40 Preprocessor1_Model1
+#> 2  49.3 Fold01    28                 54 Preprocessor1_Model1
+#> 3  64.9 Fold01    45                 50 Preprocessor1_Model1
+#> 4  52.8 Fold01    49                 42 Preprocessor1_Model1
+#> 5  48.6 Fold01    61                 49 Preprocessor1_Model1
+#> 6  29.8 Fold01    66                 40 Preprocessor1_Model1
+#> 7  36.9 Fold01    88                 49 Preprocessor1_Model1
+#> # ℹ 3,742 more rows
+```
+## Calibration Plot
+```{r}
+library(probably)
+
+cal_plot_regression(hotel_lm_res)
+
+```
+
+# What do we do with the agent and company data?
+There are 98 unique agent values and 100 unique companies in our training set. How can we include this information in our model?
+```{r}
+
+```
+
+We could:
+
+make the full set of indicator variables 😳
+
+lump agents and companies that rarely occur into an “other” group
+
+use feature hashing to create a smaller set of indicator variables
+
+use effect encoding to replace the agent and company columns with the estimated effect of that predictor (in the extra materials)
+
+Per-agent statistics
+
+
+
+
+## Collapsing factor levels
+There is a recipe step that will redefine factor levels based on their frequency in the training set:
+```{r}
+hotel_other_rec <-
+  recipe(avg_price_per_room ~ ., data = hotel_train) %>% 
+  step_YeoJohnson(lead_time) %>%
+  step_other(agent, threshold = 0.001) %>%
+  step_dummy(all_nominal_predictors()) %>%
+  step_zv(all_predictors()) %>% 
+  step_spline_natural(arrival_date_num, deg_free = 10)
+```
+
+Using this code, 34 agents (out of 98) were collapsed into “other” based on the training set.
+
+We could try to optimize the threshold for collapsing (see the next set of slides on model tuning).
+
+Does othering help?
+```{r}
+hotel_other_wflow <-
+  hotel_lm_wflow %>%
+  update_recipe(hotel_other_rec)
+
+hotel_other_res <-
+  hotel_other_wflow %>%
+  fit_resamples(hotel_rs, control = ctrl, metrics = reg_metrics)
+
+collect_metrics(hotel_other_res)
+#> # A tibble: 2 × 6
+#>   .metric .estimator   mean     n std_err .config             
+#>   <chr>   <chr>       <dbl> <int>   <dbl> <chr>               
+#> 1 mae     standard   16.7      10 0.213   Preprocessor1_Model1
+#> 2 rsq     standard    0.884    10 0.00341 Preprocessor1_Model1
+```
+
+About the same MAE and much faster to complete.
+
+Now let’s look at a more sophisticated tool called effect feature hashing.
+
+## Feature Hashing
+Between agent and company, simple dummy variables would create 198 new columns (that are mostly zeros).
+
+Another option is to have a binary indicator that combines some levels of these variables.
+
+Feature hashing (for more see FES, SMLTAR, TMwR, and aml4td):
+
+uses the character values of the levels
+converts them to integer hash values
+uses the integers to assign them to a specific indicator column.
+### Feature Hashing
+Suppose we want to use 32 indicator variables for agent.
+
+For a agent with value “Max_Kuhn”, a hashing function converts it to an integer (say 210397726).
+
+To assign it to one of the 32 columns, we would use modular arithmetic to assign it to a column:
+```{r}
+# For "Max_Kuhn" put a '1' in column: 
+210397726 %% 32
+#> [1] 30
+```
+
+### Feature Hashing Pros
+The procedure will automatically work on new values of the predictors.
+It is fast.
+“Signed” hashes add a sign to help avoid aliasing.
+### Feature Hashing Cons
+There is no real logic behind which factor levels are combined.
+We don’t know how many columns to add (more in the next section).
+Some columns may have all zeros.
+If a indicator column is important to the model, we can’t easily determine why.
+The signed hash make it slightly more possible to differentiate between confounded levels
+
+### Feature Hashing in recipes
+The textrecipes package has a step that can be added to the recipe:
+```{r}
+library(textrecipes)
+
+hash_rec <-
+  recipe(avg_price_per_room ~ ., data = hotel_train) %>%
+  step_YeoJohnson(lead_time) %>%
+  # Defaults to 32 signed indicator columns
+  step_dummy_hash(agent) %>%
+  step_dummy_hash(company) %>%
+  # Regular indicators for the others
+  step_dummy(all_nominal_predictors()) %>% 
+  step_zv(all_predictors())
+
+# hash_rec <-
+#   recipe(avg_price_per_room ~ ., data = hotel_train) %>%
+#   step_YeoJohnson(lead_time) %>%
+#   # Defaults to 32 signed indicator columns
+#   step_dummy_hash(agent) %>%
+#   step_dummy_hash(company) %>%
+#   # Regular indicators for the others
+#   step_dummy(all_nominal_predictors()) %>% 
+#   step_zv(all_predictors()) %>% 
+#   step_spline_natural(arrival_date_num, deg_free = 10)
+
+hotel_hash_wflow <-
+  hotel_lm_wflow %>%
+  update_recipe(hash_rec)
+```
+
+### Feature Hashing in recipes
+```{r}
+
+
+hotel_hash_res <-
+  hotel_hash_wflow %>%
+  fit_resamples(hotel_rs, control = ctrl, metrics = reg_metrics)
+
+collect_metrics(hotel_hash_res)
+#> # A tibble: 2 × 6
+#>   .metric .estimator   mean     n std_err .config             
+#>   <chr>   <chr>       <dbl> <int>   <dbl> <chr>               
+#> 1 mae     standard   16.7      10 0.239   Preprocessor1_Model1
+#> 2 rsq     standard    0.884    10 0.00324 Preprocessor1_Model1
+
+```
+
+
+About the same performance but now we can handle new values.
+
+## Debugging a recipe
+
+Typically, you will want to use a workflow to estimate and apply a recipe.
+If you have an error and need to debug your recipe, the original recipe object (e.g. hash_rec) can be estimated manually with a function called prep(). It is analogous to fit(). See TMwR section 16.4
+Another function (bake()) is analogous to predict(), and gives you the processed data back.
+The tidy() function can be used to get specific results from the recipe.
+### Example
+```{r}
+
+hash_rec_fit <- prep(hash_rec)
+
+# Get the transformation coefficient
+tidy(hash_rec_fit, number = 1)
+
+# Get the processed data
+bake(hash_rec_fit, hotel_train %>% slice(1:3), contains("_agent_"))
+```
+## More on recipes
+Once fit() is called on a workflow, changing the model does not re-fit the recipe.
+A list of all known steps is at https://www.tidymodels.org/find/recipes/.
+Some steps can be skipped when using predict().
+The order of the steps matters.
+
+
+Optimizing Models via Tuning Parameters
+# Tuning parameters
+Some model or preprocessing parameters cannot be estimated directly from the data.
+
+Some examples:
+
+### Tree depth in decision trees
+### Number of neighbors in a K-nearest neighbor model
+### Activation function in neural networks?
+Sigmoidal functions, ReLu, etc.
+
+Yes, it is a tuning parameter. ✅
+
+### Number of feature hashing columns to generate?
+Yes, it is a tuning parameter. ✅
+
+### Bayesian priors for model parameters?
+Hmmmm, probably not. These are based on prior belief. ❌
+
+### The random seed?
+Nope. It is not. ❌
+
+## Optimize tuning parameters
+- Try different values and measure their performance.
+- Find good values for these parameters.
+- Once the value(s) of the parameter(s) are determined, a model can be finalized by fitting the model to the entire training set.
+
+## Tagging parameters for tuning
+With tidymodels, you can mark the parameters that you want to optimize with a value of tune().
+The function itself just returns… itself:
+```{r}
+
+
+tune()
+#> tune()
+str(tune())
+#>  language tune()
+
+# optionally add a label
+tune("I hope that the workshop is going well")
+#> tune("I hope that the workshop is going well")
+
+```
+or example…
+
+## Optimizing the hash features
+Our new recipe is:
+```{r}
+hash_rec <-
+  recipe(avg_price_per_room ~ ., data = hotel_train) %>%
+  step_YeoJohnson(lead_time) %>%
+  step_dummy_hash(agent,   num_terms = tune("agent hash")) %>%
+  step_dummy_hash(company, num_terms = tune("company hash")) %>%
+  step_zv(all_predictors())
+
+```
+
+We will be using a tree-based model in a minute.
+
+The other categorical predictors are left as-is.
+That’s why there is no step_dummy().
+
+
+# Boosted Trees
+These are popular ensemble methods that build a sequence of tree models.
+
+
+
+Each tree uses the results of the previous tree to better predict samples, especially those that have been poorly predicted.
+
+
+
+Each tree in the ensemble is saved and new samples are predicted using a weighted average of the votes of each tree in the ensemble.
+
+
+
+We’ll focus on the popular lightgbm implementation.
+
+## Boosted Tree Tuning Parameters
+Some possible parameters:
+
+mtry: The number of predictors randomly sampled at each split (in \([1, ncol(x)]\) or \((0, 1]\)).
+trees: The number of trees (\([1, \infty]\), but usually up to thousands)
+min_n: The number of samples needed to further split (\([1, n]\)).
+learn_rate: The rate that each tree adapts from previous iterations (\((0, \infty]\), usual maximum is 0.1).
+stop_iter: The number of iterations of boosting where no improvement was shown before stopping (\([1, trees]\))
+Boosted Tree Tuning Parameters
+TBH it is usually not difficult to optimize these models.
+
+
+
+Often, there are multiple candidate tuning parameter combinations that have very good results.
+
+
+
+To demonstrate simple concepts, we’ll look at optimizing the number of trees in the ensemble (between 1 and 100) and the learning rate (\(10^{-5}\) to \(10^{-1}\)).
+
+Boosted Tree Tuning Parameters
+We’ll need to load the bonsai package. This has the information needed to use lightgbm
+```{r}
+library(bonsai)
+lgbm_spec <- 
+  boost_tree(trees = tune(), learn_rate = tune()) %>% 
+  set_mode("regression") %>% 
+  set_engine("lightgbm", num_threads = 1)
+
+lgbm_wflow <- workflow(hash_rec, lgbm_spec)
+```
+
+### Optimize tuning parameters
+The main two strategies for optimization are:
+
+# Grid search 💠 which tests a pre-defined set of candidate values
+
+## Iterative search 🌀 which suggests/estimates new values of candidate parameters to evaluate
+
+Grid search
+A small grid of points trying to minimize the error via learning rate:
+
+
+Grid search
+In reality we would probably sample the space more densely:
+
+
+Iterative Search
+We could start with a few points and search the space:
+
+
+### Grid Search Parameters
+The tidymodels framework provides pre-defined information on tuning parameters (such as their type, range, transformations, etc).
+
+The extract_parameter_set_dials() function extracts these tuning parameters and the info.
+
+Grids
+Create your grid manually or automatically.
+
+The grid_*() functions can make a grid.
+
+Most basic (but very effective) way to tune models
+
+### Different types of grids
+```{r}
+lgbm_wflow %>% 
+  extract_parameter_set_dials()
+#> Collection of 4 parameters for tuning
+#> 
+#>    identifier       type    object
+#>         trees      trees nparam[+]
+#>    learn_rate learn_rate nparam[+]
+#>    agent hash  num_terms nparam[+]
+#>  company hash  num_terms nparam[+]
+
+# Individual functions: 
+trees()
+#> # Trees (quantitative)
+#> Range: [1, 2000]
+learn_rate()
+#> Learning Rate (quantitative)
+#> Transformer: log-10 [1e-100, Inf]
+#> Range (transformed scale): [-10, -1]
+```
+
+
+Space-filling designs (SFD) attempt to cover the parameter space without redundant candidates. We recommend these the most.
+
+### Create a grid
+```{r}
+set.seed(12)
+grid <- 
+  lgbm_wflow %>% 
+  extract_parameter_set_dials() %>% 
+  grid_space_filling(size = 25)
+
+grid
+#> # A tibble: 25 × 4
+#>    trees learn_rate `agent hash` `company hash`
+#>    <int>      <dbl>        <int>          <int>
+#>  1     1   7.50e- 6          574            574
+#>  2    84   1.78e- 5         2048           2298
+#>  3   167   5.62e-10         1824            912
+#>  4   250   4.22e- 5         3250            512
+#>  5   334   1.78e- 8          512           2896
+#>  6   417   1.33e- 3          322           1625
+#>  7   500   1   e- 1         1448           1149
+#>  8   584   1   e- 7         1290            256
+#>  9   667   2.37e-10          456            724
+#> 10   750   1.78e- 2          645            322
+#> # ℹ 15 more rows
+```
+
+
+Your turn
+
+
+Create a grid for our tunable workflow.
+
+Try creating a regular grid.
+
+
+### Create a regular grid
+```{r}
+set.seed(12)
+grid <- 
+  lgbm_wflow %>% 
+  extract_parameter_set_dials() %>% 
+  grid_regular(levels = 4)
+
+grid
+#> # A tibble: 256 × 4
+#>    trees   learn_rate `agent hash` `company hash`
+#>    <int>        <dbl>        <int>          <int>
+#>  1     1 0.0000000001          256            256
+#>  2   667 0.0000000001          256            256
+#>  3  1333 0.0000000001          256            256
+#>  4  2000 0.0000000001          256            256
+#>  5     1 0.0000001             256            256
+#>  6   667 0.0000001             256            256
+#>  7  1333 0.0000001             256            256
+#>  8  2000 0.0000001             256            256
+#>  9     1 0.0001                256            256
+#> 10   667 0.0001                256            256
+#> # ℹ 246 more rows
+```
+Your turn
+
+
+
+
+What advantage would a regular grid have?
+
+#### Update parameter ranges
+```{r}
+
+lgbm_param <- 
+  lgbm_wflow %>% 
+  extract_parameter_set_dials() %>% 
+  update(trees = trees(c(1L, 100L)),
+         learn_rate = learn_rate(c(-5, -1)))
+
+set.seed(712)
+grid <- 
+  lgbm_param %>% 
+  grid_space_filling(size = 25)
+
+grid
+#> # A tibble: 25 × 4
+#>    trees learn_rate `agent hash` `company hash`
+#>    <int>      <dbl>        <int>          <int>
+#>  1     1  0.00147            574            574
+#>  2     5  0.00215           2048           2298
+#>  3     9  0.0000215         1824            912
+#>  4    13  0.00316           3250            512
+#>  5    17  0.0001             512           2896
+#>  6    21  0.0147             322           1625
+#>  7    25  0.1               1448           1149
+#>  8    29  0.000215          1290            256
+#>  9    34  0.0000147          456            724
+#> 10    38  0.0464             645            322
+#> # ℹ 15 more rows
+```
+
+The results
+```{r}
+grid %>% 
+  ggplot(aes(trees, learn_rate)) +
+  geom_point(size = 4) +
+  scale_y_log10()
+
+```
+Note that the learning rates are uniform on the log-10 scale and this shows 2 of 4 dimensions.
+
+Use the tune_*() functions to tune models
+### Choosing tuning parameters
+Let’s take our previous model and tune more parameters:
+```{r}
+lgbm_spec <- 
+  boost_tree(trees = tune(), learn_rate = tune(),  min_n = tune()) %>% 
+  set_mode("regression") %>% 
+  set_engine("lightgbm", num_threads = 1)
+
+lgbm_wflow <- workflow(hash_rec, lgbm_spec)
+
+# Update the feature hash ranges (log-2 units)
+lgbm_param <-
+  lgbm_wflow %>%
+  extract_parameter_set_dials() %>%
+  update(`agent hash`   = num_hash(c(3, 8)),
+         `company hash` = num_hash(c(3, 8)))
+```
+
+### Grid Search
+
+```{r}
+set.seed(9)
+ctrl <- control_grid(save_pred = TRUE)
+
+lgbm_res <-
+  lgbm_wflow %>%
+  tune_grid(
+    resamples = hotel_rs,
+    grid = 25,
+    # The options below are not required by default
+    param_info = lgbm_param, 
+    control = ctrl,
+    metrics = reg_metrics
+  )
+```
+
+tune_grid() is representative of tuning function syntax
+similar to fit_resamples()
+```{r}
+lgbm_res 
+#> # Tuning results
+#> # 10-fold cross-validation using stratification 
+#> # A tibble: 10 × 5
+#>    splits             id     .metrics          .notes           .predictions        
+#>    <list>             <chr>  <list>            <list>           <list>              
+#>  1 <split [3372/377]> Fold01 <tibble [50 × 9]> <tibble [0 × 4]> <tibble [9,425 × 9]>
+#>  2 <split [3373/376]> Fold02 <tibble [50 × 9]> <tibble [0 × 4]> <tibble [9,400 × 9]>
+#>  3 <split [3373/376]> Fold03 <tibble [50 × 9]> <tibble [0 × 4]> <tibble [9,400 × 9]>
+#>  4 <split [3373/376]> Fold04 <tibble [50 × 9]> <tibble [0 × 4]> <tibble [9,400 × 9]>
+#>  5 <split [3373/376]> Fold05 <tibble [50 × 9]> <tibble [0 × 4]> <tibble [9,400 × 9]>
+#>  6 <split [3374/375]> Fold06 <tibble [50 × 9]> <tibble [0 × 4]> <tibble [9,375 × 9]>
+#>  7 <split [3375/374]> Fold07 <tibble [50 × 9]> <tibble [0 × 4]> <tibble [9,350 × 9]>
+#>  8 <split [3376/373]> Fold08 <tibble [50 × 9]> <tibble [0 × 4]> <tibble [9,325 × 9]>
+#>  9 <split [3376/373]> Fold09 <tibble [50 × 9]> <tibble [0 × 4]> <tibble [9,325 × 9]>
+#> 10 <split [3376/373]> Fold10 <tibble [50 × 9]> <tibble [0 × 4]> <tibble [9,325 × 9]>
+```
+
+Grid results
+```{r}
+autoplot(lgbm_res)
+```
+#### Tuning results 1
+```{r}
+collect_metrics(lgbm_res)
+#> # A tibble: 50 × 11
+#>    trees min_n learn_rate `agent hash` `company hash` .metric .estimator   mean     n std_err .config              
+#>    <int> <int>      <dbl>        <int>          <int> <chr>   <chr>       <dbl> <int>   <dbl> <chr>                
+#>  1   298    19   4.15e- 9          222             36 mae     standard   53.2      10 0.427   Preprocessor01_Model1
+#>  2   298    19   4.15e- 9          222             36 rsq     standard    0.810    10 0.00686 Preprocessor01_Model1
+#>  3  1394     5   5.82e- 6           28             21 mae     standard   52.9      10 0.424   Preprocessor02_Model1
+#>  4  1394     5   5.82e- 6           28             21 rsq     standard    0.810    10 0.00800 Preprocessor02_Model1
+#>  5   774    12   4.41e- 2           27             95 mae     standard    9.77     10 0.155   Preprocessor03_Model1
+#>  6   774    12   4.41e- 2           27             95 rsq     standard    0.946    10 0.00341 Preprocessor03_Model1
+#>  7  1342     7   6.84e-10           71             17 mae     standard   53.2      10 0.427   Preprocessor04_Model1
+#>  8  1342     7   6.84e-10           71             17 rsq     standard    0.811    10 0.00785 Preprocessor04_Model1
+#>  9   669    39   8.62e- 7          141            145 mae     standard   53.2      10 0.426   Preprocessor05_Model1
+#> 10   669    39   8.62e- 7          141            145 rsq     standard    0.807    10 0.00639 Preprocessor05_Model1
+#> # ℹ 40 more rows
+```
+#### result 2
+```{r}
+collect_metrics(lgbm_res, summarize = FALSE)
+#> # A tibble: 500 × 10
+#>    id     trees min_n    learn_rate `agent hash` `company hash` .metric .estimator .estimate .config              
+#>    <chr>  <int> <int>         <dbl>        <int>          <int> <chr>   <chr>          <dbl> <chr>                
+#>  1 Fold01   298    19 0.00000000415          222             36 mae     standard      51.8   Preprocessor01_Model1
+#>  2 Fold01   298    19 0.00000000415          222             36 rsq     standard       0.821 Preprocessor01_Model1
+#>  3 Fold02   298    19 0.00000000415          222             36 mae     standard      52.1   Preprocessor01_Model1
+#>  4 Fold02   298    19 0.00000000415          222             36 rsq     standard       0.804 Preprocessor01_Model1
+#>  5 Fold03   298    19 0.00000000415          222             36 mae     standard      52.2   Preprocessor01_Model1
+#>  6 Fold03   298    19 0.00000000415          222             36 rsq     standard       0.786 Preprocessor01_Model1
+#>  7 Fold04   298    19 0.00000000415          222             36 mae     standard      51.7   Preprocessor01_Model1
+#>  8 Fold04   298    19 0.00000000415          222             36 rsq     standard       0.826 Preprocessor01_Model1
+#>  9 Fold05   298    19 0.00000000415          222             36 mae     standard      55.2   Preprocessor01_Model1
+#> 10 Fold05   298    19 0.00000000415          222             36 rsq     standard       0.845 Preprocessor01_Model1
+#> # ℹ 490 more rows
+```
+
+## Choose a parameter combination
+```{r}
+show_best(lgbm_res, metric = "rsq")
+#> # A tibble: 5 × 11
+#>   trees min_n learn_rate `agent hash` `company hash` .metric .estimator  mean     n std_err .config              
+#>   <int> <int>      <dbl>        <int>          <int> <chr>   <chr>      <dbl> <int>   <dbl> <chr>                
+#> 1  1890    10    0.0159           115            174 rsq     standard   0.948    10 0.00334 Preprocessor12_Model1
+#> 2   774    12    0.0441            27             95 rsq     standard   0.946    10 0.00341 Preprocessor03_Model1
+#> 3  1638    36    0.0409            15            120 rsq     standard   0.945    10 0.00384 Preprocessor16_Model1
+#> 4   963    23    0.00556          157             13 rsq     standard   0.937    10 0.00320 Preprocessor06_Model1
+#> 5   590     5    0.00320           85             73 rsq     standard   0.908    10 0.00465 Preprocessor24_Model1
+```
+
+### Choose a parameter combination
+Create your own tibble for final parameters or use one of the tune::select_*() functions:
+```{r}
+
+
+lgbm_best <- select_best(lgbm_res, metric = "mae")
+lgbm_best
+#> # A tibble: 1 × 6
+#>   trees min_n learn_rate `agent hash` `company hash` .config              
+#>   <int> <int>      <dbl>        <int>          <int> <chr>                
+#> 1  1890    10     0.0159          115            174 Preprocessor12_Model1
+
+```
+
+
+## Checking Calibration
+```{r}
+
+library(probably)
+lgbm_res %>%
+  collect_predictions(
+    parameters = lgbm_best
+  ) %>%
+  cal_plot_regression(
+    truth = avg_price_per_room,
+    estimate = .pred
+  )
+```
+
+
+# Run in Parallel
+Grid search, combined with resampling, requires fitting a lot of models!
+
+These models don’t depend on one another and can be run in parallel.
+
+We can use a parallel backend to do this:
+```{r}
+
+cores <- parallelly::availableCores(logical = FALSE)
+cl <- parallel::makePSOCKcluster(cores)
+doParallel::registerDoParallel(cl)
+
+# Now call `tune_grid()`!
+
+# Shut it down with:
+foreach::registerDoSEQ()
+parallel::stopCluster(cl)
+
+```
+
+```{r}
+
+```
+
+
+Speed-ups are fairly linear up to the number of physical cores (10 here).
+
+
+Faceted on the expensiveness of preprocessing used.
+
+## The ‘future’ of parallel processing
+We have relied on the foreach package for parallel processing.
+
+We will start the transition to using the future package in the upcoming version of the tune package (version 1.3.0).
+
+There will be a period of backward compatibility where you can still use foreach with future via the doFuture package. After that, the transition to future will occur.
+
+## Overall, there will be minimal changes to your code.
+
+### Early stopping for boosted trees
+We have directly optimized the number of trees as a tuning parameter.
+
+Instead we could
+
+Set the number of trees to a single large number.
+Stop adding trees when performance gets worse.
+This is known as “early stopping” and there is a parameter for that: stop_iter.
+
+Early stopping has a potential to decrease the tuning time.
+
+Your turn
+
+
+
+
+Set trees = 2000 and tune the stop_iter parameter.
+
+Note that you will need to regenerate lgbm_param with your new workflow!
+
+# Racing
+
+## First, a shameless promotion
+
+Making Grid Search More Efficient
+In the last section, we evaluated 250 models (25 candidates times 10 resamples).
+
+We can make this go faster using parallel processing.
+
+Also, for some models, we can fit far fewer models than the number that are being evaluated.
+
+For boosting, a model with X trees can often predict on candidates with less than X trees.
+Both of these methods can lead to enormous speed-ups.
+
+## Model Racing
+Racing is an old tool that we can use to go even faster.
+
+Evaluate all of the candidate models but only for a few resamples.
+Determine which candidates have a low probability of being selected.
+Eliminate poor candidates.
+Repeat with next resample (until no more resamples remain)
+This can result in fitting a small number of models.
+
+### Discarding Candidates
+How do we eliminate tuning parameter combinations?
+
+There are a few methods to do so. We’ll use one based on analysis of variance (ANOVA).
+
+However… there is typically a large difference between resamples in the results.
+
+#### Resampling Results (Non-Racing)
+Here are some realistic (but simulated) examples of two candidate models.
+
+An error estimate is measured for each of 10 resamples.
+
+The lines connect resamples.
+There is usually a significant resample-to-resample effect (rank corr: 0.83).
+
+
+
+### Are Candidates Different?
+One way to evaluate these models is to do a paired t-test
+
+or a t-test on their differences matched by resamples
+With \(n = 10\) resamples, the confidence interval for the difference in RMSE is (0.99, 2.8), indicating that candidate number 2 has smaller error.
+
+### Evaluating Differences in Candidates
+What if we were to have compared the candidates while we seqeuntially evaluated each resample?
+
+👉
+
+
+One candidate shows superiority when 4 resamples have been evaluated.
+
+
+
+### Interim Analysis of Results
+One version of racing uses a mixed model ANOVA to construct one-sided confidence intervals for each candidate versus the current best.
+
+Any candidates whose bound does not include zero are discarded. Here is an animation.
+
+The resamples are analyzed in a random order (so set the seed).
+
+
+
+Kuhn (2014) has examples and simulations to show that the method works.
+
+The finetune package has functions tune_race_anova() and tune_race_win_loss().
+
+## Racing
+```{r}
+
+
+# Let's use a larger grid
+set.seed(8945)
+lgbm_grid <- 
+  lgbm_param %>% 
+  grid_space_filling(size = 50)
+
+library(finetune)
+
+set.seed(9)
+lgbm_race_res <-
+  lgbm_wflow %>%
+  tune_race_anova(
+    resamples = hotel_rs,
+    grid = lgbm_grid, 
+    metrics = reg_metrics
+  )
+```
+The syntax and helper functions are extremely similar to those shown for tune_grid().
+
+## Racing Results
+```{r}
+
+
+show_best(lgbm_race_res, metric = "mae")
+#> # A tibble: 2 × 11
+#>   trees min_n learn_rate `agent hash` `company hash` .metric .estimator  mean     n std_err .config              
+#>   <int> <int>      <dbl>        <int>          <int> <chr>   <chr>      <dbl> <int>   <dbl> <chr>                
+#> 1  1347     5     0.0655           66             26 mae     standard    9.64    10   0.173 Preprocessor34_Model1
+#> 2   980     8     0.0429           17            135 mae     standard    9.76    10   0.164 Preprocessor25_Model1
+```
+### Racing Results
+Only 171 models were fit (out of 500).
+
+select_best() never considers candidate models that did not get to the end of the race.
+
+There is a helper function to see how candidate models were removed from consideration.
+```{r}
+
+
+plot_race(lgbm_race_res) + 
+  scale_x_continuous(breaks = pretty_breaks())
+```
