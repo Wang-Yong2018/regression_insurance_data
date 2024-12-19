@@ -951,6 +951,8 @@ get_vmod_v1.03 <- function(nrows = Inf) {
 }
 vmod_v1.03 <- get_vmod_v1.03()
 ```
+
+
 ### -v1.03_b - basedon v1.03 and revise dummy feature
 ```{r}
 
@@ -1010,7 +1012,7 @@ get_vmod_v1.03_b <- function(nrows = Inf) {
                microsecond_cut,
                date_cut,
                date_year,
-               Insurance,
+               Insurance.Duration,
                Previous.Claims,
                Number.of.Dependents,
                Gender,

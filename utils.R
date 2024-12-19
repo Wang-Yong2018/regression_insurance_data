@@ -4,6 +4,7 @@ library(lightgbm)
 library(butcher)
 library(broom)
 library(memoise)
+library(finetune)
 
 rmsel <- function(data,
                   truth = 'truth',
@@ -28,7 +29,6 @@ get_lm_wf <- function(){
     add_model(lm_spec)
   return(lm_wf)
 }
-
 
 get_lgb_wf <- function(n_trees = 500,
                        rate = 0.01,
@@ -159,82 +159,85 @@ get_fit_lgb_wf <- function(rcp,
                            description = '',
                            is_log1py = FALSE,
                            return_wf = FALSE) {
-  lgb_wf <- get_lgb_wf()
-  fit_wf <- lgb_wf |>
-    add_recipe(rcp) |>
-    fit(data = {{data}})
+# setup metrics
+    reg_metrics <- metric_set(mae, rsq)
+# data split 
+## train & test
+  set.seed(1024)
+  data_split <- initial_split(data)
   
-  fit_mod <-
-    fit_wf |>
-    extract_fit_engine()
+  data_train <- training(data_split)
+  data_test <- testing(data_split)
+## cv 
+  set.seed(1024)
+  data_rs <- vfold_cv(data_train)
+ lgbm_spec <- 
+    boost_tree(trees = 500,
+               tree_depth = 15,
+               learn_rate =0.5,
+               stop_iter= 10,
+               min_n = 50,
+               sample_size= 0.8,
+               loss_reduction = 0.001
+               )|>
+    set_mode("regression") %>% 
+    set_engine("lightgbm", 
+               force_row_wise=TRUE,
+               verbose = 1,
+               num_leaves = 2048,
+               lambda_l2 = 0.2,
+               lambda_l1 = 0.2,
+               )
   
-  best_score <- fit_mod$best_score
-  params <- fit_mod$params
-  
-  tidy_mod <- fit_wf |> butcher::butcher()
-  
-  predictions <-
-    fit_wf |>
-    predict(new_data = data)
-  
-  # Combine predictions with actual values
-  results <- data |>
-    select(truth) |>
-    bind_cols(predictions)
-  
-  # Define a metric set for R-squared, RMSE, and RMSLE
-  metrics <- metric_set(rsq, rmse, rmsle)
-  
-  # Calculate the metrics
-  metric_results <- metrics(results, truth = truth, estimate = .pred)
-  
-  
-  if (is_log1py == TRUE) {
-    # if the outcome variable is log1p transformed in recipes.
-    # the .pred , truth should be reverse to original scale.
-    # as the log1p residual just minus
-    tidy_augment <-
-      tidy_augment |>
-      mutate(
-        log1p_residual = .pred - truth,
-        .pred = exp(.pred) + 1,
-        truth = exp(truth) + 1
-      )
-  } else
-    (
-      
-      tidy_augment <-
-        tidy_augment |>
-        mutate(log1p_residual = log1p(.pred) - log1p(truth))
-    )
-  rmsel_value <-
-    tidy_augment |>
-    rmsel(truth, .pred) |>
-    pull(.estimate)
-  
-  rmse_value <-
-    tidy_augment |>
-    rmse(truth, .pred) |>
-    pull(.estimate)
-  
-  vetiver_mod <- vetiver_model(
-    model = tidy_mod,
-    model_name = name ,
-    description = {{description}},
-    metadata = list(metrics = metric_results)
-  )
-  
-  # vetiver_mod$metadata$user$metrics  |>
-  #   pivot_longer(cols = everything()) |>
-  #   filter(grepl('rmse|r.squared|nob', name)) |>
-  #   print()
-  # 
-  
-  keep_model(vetiver_mod)
-  if (return_wf == TRUE) {
-    result <- fit_wf
-  } else{
-    result <- fit_mod
-  }
-  return(result)
+ # lgbm_grid <- 
+ #   lgbm_param %>%   
+ #   grid_space_filling(size = 50)
+ 
+ lgbm_wflow <- workflow(rcp, lgbm_spec)
+ lgbm_param <-
+   lgbm_wflow |>
+   extract_parameter_set_dials() 
+ 
+ ctrl <- control_resamples(save_pred = TRUE,
+                           verbose = TRUE,  # Enable verbose output
+                           allow_par = TRUE  # Allow parallel processing (optional)
+                           )
+ lgb_res <-
+   lgbm_wflow %>%
+   fit_resamples(data_rs, control = ctrl, metrics = reg_metrics)
+ 
+ collect_metrics(lgb_res)
+ 
+ 
+ # 
+ # cores <- parallelly::availableCores(logical = FALSE)
+ # cl <- parallel::makePSOCKcluster(cores)
+ # doParallel::registerDoParallel(cl)
+ # 
+ # set.seed(9)
+ # ctrl <- control_grid(save_pred = TRUE)
+ # 
+ # lgbm_res <-
+ #   lgbm_wflow %>%
+ #   tune_grid(
+ #     resamples = data_rs,
+ #     grid = 4,
+ #     # The options below are not required by default
+ #     param_info = lgbm_param, 
+ #     control = ctrl,
+ #     metrics = reg_metrics
+ #   )
+ # 
+ # foreach::registerDoSEQ()
+ # parallel::stopCluster(cl)
+ # 
+ # lgbm_res 
+ # autoplot(lgbm_res)
+ # collect_metrics(lgbm_res)
+ # collect_metrics(lgbm_res, summarize = FALSE)
+ # show_best(lgbm_res, metric = "rsq")
+ # lgbm_best <- select_best(lgbm_res, metric = "mae")
+ # lgbm_best
+ # 
+ return(lgb_res)
 }
