@@ -1138,6 +1138,9 @@ vmod_v1.04 <- get_vmod_v1.04()
 
 ### - v1.x
 ```{r}
+# TODO Annual income need keep
+# current import features are : health score, Annual.Income_cut, Credit.Score_cut, mean_income, mean_age, microsecond, first, last, weekly_cnt, avg, looks the feature engineering has many things to do.
+
 #DONE know why some insurance premium amount was so low - Annaul income is very important
 #DONE 20 price buying pattern related to time. False. everyday. happened. it related to group people. 
 #DONE The answer is no. Is there pattern that, group by high price insuance first and then buy low price. later. It may related to time series .2019-early of 2020 is very high.  and people
