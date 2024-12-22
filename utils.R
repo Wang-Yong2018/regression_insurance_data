@@ -12,8 +12,10 @@ rmsel <- function(data,
                   na_rm = TRUE) {
   #  data|>glimpse()
   data |>
-    select(truth = {{truth}}, estimate = {{estimate}}) |>
-    transmute(truth = log1p(truth), estimate = log1p(estimate)) |>
+    dplyr::select(truth = {{truth}}, 
+           estimate = {{estimate}}) |>
+    transmute(truth = log1p(truth), 
+              estimate = log1p(estimate)) |>
     rmse(truth, estimate)
 }
 
@@ -30,42 +32,46 @@ get_lm_wf <- function(){
   return(lm_wf)
 }
 
-get_lgb_wf <- function(n_trees = 500,
-                       rate = 0.01,
-                       n_depth = 15,
-                       n_leaves = 1000,
-                       n_leaves_min = 100,
+get_lgb_wf <- function(trees = 300,
+                       tree_depth = 40,
+                       learn_rate = 0.1,
+                       mtry=0.8,
+                       sample_size = 0.8,
+                       stop_iter=10,
+                       num_leaves= 900,
+                       min_n= 100,
                        min_gain_to_split = 0.001,
-                       l1_alpha = 0.2,
-                       l2_alpha = 0.2,
-                       sample_rate = 0.8,
-                       n_early_stop = 50,
-                       verbose_level = 1) {
-  mod_spec <- boost_tree(
-    #mtry = 50,
-    stop_iter = n_early_stop,
-    # p/3 for regression case, p is total feature numbers
-    min_n = n_leaves_min,
-    trees = n_trees,
-    tree_depth = n_depth,
-    learn_rate = rate,
-    sample_size = sample_rate,
-    loss_reduction = min_gain_to_split
-  ) |>
-    set_mode("regression") |>
-    set_engine(
-      "lightgbm",
-      num_leaves = n_leaves,
-      lambda_l2 = l1_alpha,
-      lambda_l1 = l2_alpha,
-      verbose = verbose_level
-    )
+                       lambda_l1 = 0.2,
+                       lambda_l2 = 0.2,
+                       num_threads=10,
+                       force_row_wise=TRUE,
+                       verbose = 1) {
+  # for lightgbm parameter config only.
+  
+  
+  mod_spec <- 
+    boost_tree(trees = {{trees}},
+                         tree_depth = {{tree_depth}},
+                         learn_rate = {{learn_rate}},
+                         mtry = {{mtry}},
+                         sample_size = {{sample_size}},
+                         stop_iter = {{stop_iter}},
+                         min_n = {{min_n}},
+                         loss_reduction = {{min_gain_to_split}} ) |>
+    set_engine( "lightgbm",
+                num_leaves = {{num_leaves}},
+                lambda_l1 = {{lambda_l1}},
+                lambda_l2 = {{lambda_l2}},
+                num_threads = {{num_threads}},
+                force_row_wise = {{force_row_wise}},
+                count=FALSE,
+                verbose = {{verbose}}) |>
+    set_mode("regression") 
   
   lgb_wf <-
     workflow() |>
     add_model(mod_spec)
   return(lgb_wf)
-  
 }
 
 
@@ -75,7 +81,7 @@ get_fit_wf <- function(rcp,
                        data,
                        name = '',
                        description = '',
-                       is_log1py = FALSE,
+                       is_log1py = TRUE,
                        return_wf = FALSE) {
   lm_wf <- get_lm_wf()
   fit_wf <- lm_wf |>
@@ -86,12 +92,10 @@ get_fit_wf <- function(rcp,
     extract_fit_engine()
   #tmp_baked <- rcp|>prep()|>check_missing(all_predictors())|> bake(data)
   
-  tidy_mod <- fit_mod |> broom::tidy()
-  glance_mod <- fit_mod |> broom::glance()
-  tidy_augment <-
-    fit_mod |>
-    broom::augment() |>
-    select(truth = `..y`, .pred = `.fitted`)
+  tidy_augment <- 
+    fit_wf |>
+    predict(data) |>
+    bind_cols(data)
   
   if (is_log1py == TRUE) {
     # if the outcome variable is log1p transformed in recipes.
@@ -99,15 +103,13 @@ get_fit_wf <- function(rcp,
     # as the log1p residual just minus
     tidy_augment <-
       tidy_augment |>
-      mutate(
-        log1p_residual = .pred - truth,
-        .pred = exp(.pred) + 1,
-        truth = exp(truth) + 1
-      )
-  } else
-    (tidy_augment <-
+      mutate( .pred = exp(.pred) + 1)
+  } 
+  
+   tidy_augment <-
        tidy_augment |>
-       mutate(log1p_residual = log1p(.pred) - log1p(truth)))
+       mutate(log1p_residual = log1p(.pred) - log1p(truth))
+
   rmsel_value <-
     tidy_augment  |>
     rmsel(truth, .pred) |>
@@ -117,29 +119,35 @@ get_fit_wf <- function(rcp,
     tidy_augment |>
     rmse(truth, .pred) |>
     pull(.estimate)
+  rsq_value <-
+    tidy_augment |>
+    rsq(truth, .pred) |>
+    pull(.estimate)
   
   glance_mod <-
-    glance_mod |>
-    mutate(rmse = rmse_value, rmsel = rmsel_value)
+    data.frame(id=0)|>
+    mutate(rmse = rmse_value, rmsel = rmsel_value,rsq=rsq_value)
   
-  fit_mod$qr <- NULL
-  # fit_mod$residuals <- NULL
-  fit_mod$log_residual <- tidy_augment |> pull(log1p_residual)
-  fit_mod$effects <- NULL
-  fit_mod$na.action <- NULL
-  fit_mod$model <- NULL
-  
+   fit_mod$residuals <- NULL
+  # fit_mod$log_residual <- tidy_augment |> pull(log1p_residual)
+   fit_mod$effects <- NULL
+   fit_mod$na.action <- NULL
+   fit_mod$model <- NULL
+  log_residual <- 
+    tidy_augment |> 
+    dplyr::select(any_of(c('id', 'log1p_residual')))
   
   vetiver_mod <- vetiver_model(
-    model = fit_mod,
+    model = fit_wf|>butcher(),
     model_name = name ,
     description = {{description}},
-    metadata = list(metrics = glance_mod)
+    metadata = list(metrics = glance_mod,
+                    residuals=log_residual)
   )
   
   vetiver_mod$metadata$user$metrics  |>
     pivot_longer(cols = everything()) |>
-    filter(grepl('rmse|r.squared|nob', name)) |>
+    filter(grepl('rmse|rsq', name)) |>
     print()
   
   keep_model(vetiver_mod)
@@ -151,16 +159,95 @@ get_fit_wf <- function(rcp,
   return(result)
 }
 
+get_fit_lgbwf <- function(rcp, data, name='', description='',is_log1py=FALSE, return_wf=FALSE){
+  lgb_wf <- get_lgb_wf()
+  
+ # reg_metrics <- metric_set(mae, rsq)
+  fit_wf <- 
+    lgb_wf |>
+    add_recipe(rcp) |>
+    fit({{data}})
+  
+  fit_mod <-
+    fit_wf |>
+    extract_fit_engine()
+  #tmp_baked <- rcp|>prep()|>check_missing(all_predictors())|> bake(data)
+  
+  tidy_augment <- 
+    fit_wf |>
+    predict(data) |>
+    bind_cols(data)
+  
+  if (is_log1py == TRUE) {
+    # if the outcome variable is log1p transformed in recipes.
+    # the .pred , truth should be reverse to original scale.
+    # as the log1p residual just minus
+    tidy_augment <-
+      tidy_augment |>
+      mutate( .pred = exp(.pred) + 1)
+  } 
+  
+  tidy_augment <-
+    tidy_augment |>
+    mutate(log1p_residual = log1p(.pred) - log1p(truth))
+  
+  rmsel_value <-
+    tidy_augment  |>
+    rmsel(truth, .pred) |>
+    pull(.estimate)
+  
+  rmse_value <-
+    tidy_augment |>
+    rmse(truth, .pred) |>
+    pull(.estimate)
+  rsq_value <-
+    tidy_augment |>
+    rsq(truth, .pred) |>
+    pull(.estimate)
+  
+  glance_mod <-
+    data.frame(id=0)|>
+    mutate(rmse = rmse_value, rmsel = rmsel_value,rsq=rsq_value)
+  
+ 
+  log_residual <- 
+    tidy_augment |> 
+    dplyr::select(any_of(c('id', 'log1p_residual')))
+  
 
 
-get_fit_lgb_wf <- function(rcp,
+  if (return_wf == TRUE) {
+    result <- fit_wf
+    
+  } else{
+    result <- fit_mod
+  }
+  
+  vetiver_mod <- vetiver_model(
+    model = result|>butcher(),
+    model_name = name ,
+    description = {{description}},
+    metadata = list(metrics = glance_mod,
+                    residuals=log_residual)
+  )
+  
+  vetiver_mod$metadata$user$metrics  |>
+    pivot_longer(cols = everything()) |>
+    filter(grepl('rmse|rsq', name)) |>
+    print()
+  
+  keep_model(vetiver_mod)
+  return(result)
+}  
+
+get_tune_fit_lgb_wf <- function(rcp,
                            data,
                            name = '',
                            description = '',
                            is_log1py = FALSE,
                            return_wf = FALSE) {
 # setup metrics
-    reg_metrics <- metric_set(mae, rsq)
+    reg_metrics <- metric_set(rmse, rsq)
 # data split 
 ## train & test
   set.seed(1024)
@@ -170,74 +257,85 @@ get_fit_lgb_wf <- function(rcp,
   data_test <- testing(data_split)
 ## cv 
   set.seed(1024)
-  data_rs <- vfold_cv(data_train)
+  data_rs <- vfold_cv(data_train,v = 5, strata = truth)
  lgbm_spec <- 
-    boost_tree(trees = 500,
-               tree_depth = 15,
-               learn_rate =0.5,
+    boost_tree(trees = 300, #tune(),# trees(range = c(300, 1500), trans = NULL),
+               tree_depth =30, # tree_depth(range = c(7, 15L), trans = NULL),
+               mtry=0.8,
+               learn_rate = 0.1,
                stop_iter= 10,
-               min_n = 50,
+               min_n = 100,#tune(), # min_n(range = c(50, 200), trans = NULL),
                sample_size= 0.8,
                loss_reduction = 0.001
                )|>
-    set_mode("regression") %>% 
     set_engine("lightgbm", 
-               force_row_wise=TRUE,
+               #force_row_wise=TRUE,
                verbose = 1,
-               num_leaves = 2048,
-               lambda_l2 = 0.2,
-               lambda_l1 = 0.2,
-               )
-  
+               num_leaves = 900, #num_leaves(range = c(500, 2048), trans = NULL),#tune(),
+               lambda_l2 = 0.1, #tune(),
+               lambda_l1 = 0.1, # tune()#,
+               num_threads = 14,
+               count=FALSE
+               )|>
+    set_mode("regression") 
+ #  
  # lgbm_grid <- 
- #   lgbm_param %>%   
- #   grid_space_filling(size = 50)
+ #   lgbm_spec |>
+ #   extract_parameter_set_dials()|>
+ #   update(#trees = 1200, #trees(range = c(300, 1500), trans = NULL),
+ #          tree_depth = tree_depth(range = c(15, 25), trans = NULL),
+ #          #min_n = 128, #min_n(range = c(50, 200), trans = NULL),
+ #          num_leaves = num_leaves(range = c(500, 2500), trans = NULL))|>
+ #   grid_space_filling(size=5)
  
  lgbm_wflow <- workflow(rcp, lgbm_spec)
- lgbm_param <-
-   lgbm_wflow |>
-   extract_parameter_set_dials() 
  
- ctrl <- control_resamples(save_pred = TRUE,
-                           verbose = TRUE,  # Enable verbose output
-                           allow_par = TRUE  # Allow parallel processing (optional)
-                           )
- lgb_res <-
-   lgbm_wflow %>%
-   fit_resamples(data_rs, control = ctrl, metrics = reg_metrics)
+ print(paste('start fitting',now()))
  
- collect_metrics(lgb_res)
+ fit_wf <- 
+   lgbm_wflow|>
+   fit({{data}})
  
- 
+ # show_best(fit_wf, metric = "rmse") |> print()
+
+
+ fit_wf|> saveRDS(file= 'lgb_fit.RDS')
+ print(paste('Complete fitting',now()))
+ return(fit_wf)
+ # # 
+ # return(lgbm_race_res)
+ # ctrl <- control_race(verbose=TRUE,
+ #                      verbose_elim = TRUE,
+ #                      save_pred = TRUE,
+ #                      save_workflow = TRUE)
  # 
- # cores <- parallelly::availableCores(logical = FALSE)
- # cl <- parallel::makePSOCKcluster(cores)
- # doParallel::registerDoParallel(cl)
- # 
- # set.seed(9)
- # ctrl <- control_grid(save_pred = TRUE)
- # 
- # lgbm_res <-
+# 
+#  cores <- parallelly::availableCores(logical = FALSE)
+#  cl <- parallel::makePSOCKcluster(cores)
+#  doParallel::registerDoParallel(cl)
+
+ set.seed(9)
+ 
+ # lgbm_race_res <-
  #   lgbm_wflow %>%
- #   tune_grid(
+ #   tune_race_anova(
  #     resamples = data_rs,
- #     grid = 4,
- #     # The options below are not required by default
- #     param_info = lgbm_param, 
- #     control = ctrl,
- #     metrics = reg_metrics
- #   )
- # 
+ #     grid = lgbm_grid,
+ #     metrics = reg_metrics,
+ #     control = ctrl)
+ 
+
  # foreach::registerDoSEQ()
  # parallel::stopCluster(cl)
- # 
- # lgbm_res 
- # autoplot(lgbm_res)
- # collect_metrics(lgbm_res)
- # collect_metrics(lgbm_res, summarize = FALSE)
- # show_best(lgbm_res, metric = "rsq")
- # lgbm_best <- select_best(lgbm_res, metric = "mae")
- # lgbm_best
- # 
- return(lgb_res)
+
+ # # show_best(lgbm_race_res, metric = "rmse") |> print()
+ # # 
+ # # plot_race(lgbm_race_res) + 
+ # #   scale_x_continuous(breaks = pretty_breaks())|>print()
+ # # 
+ # # lgbm_race_res|> saveRDS(file= 'lgb_res.RDS')
+ # # print(paste('Complete fitting',now()))
+ # # 
+ # return(lgbm_race_res)
+ 
 }

@@ -3,7 +3,6 @@ input
 kaggle.json
 vetiver
 output
-
 # History files
 .Rhistory
 .Rapp.history
@@ -39,3 +38,7 @@ docs/
 po/*~
 # RStudio Connect folder
 rsconnect/
+lgb_1.04_resi.csv
+lgb_fit.RDS
+wrong_pred.csv
+wrong_prep_data.csv

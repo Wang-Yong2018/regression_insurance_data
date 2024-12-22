@@ -32,7 +32,7 @@ get_mods_log_residual<- function(mod_name_pattern = NULL) {
   metric_result <- 
     model_names |> 
     map(\(name)  
-      model_board |> pin_read(name) |>  pluck('model','log_residual') |>  as_tibble() ) |>
+      model_board |> pin_meta(name) |>  pluck('user','residuals') |>  as_tibble()|>rename(value=log1p_residual) ) |>
     list_rbind( names_to = "name") #  per column list_cbind,   per vector list_c
   
 }

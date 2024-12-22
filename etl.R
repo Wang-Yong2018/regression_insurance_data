@@ -44,7 +44,14 @@ get_train_old <- function(){
   con <- get_duck_con()
   ddb <-
     tbl(con,'train') |>
-    mutate(Policy.Start.Date = as_datetime(Policy.Start.Date))
+    mutate(Policy.Start.Date = as_datetime(Policy.Start.Date),
+           year = year(Policy.Start.Date),
+           month= month(Policy.Start.Date),
+           wday =wday(Policy.Start.Date),
+           second=second(Policy.Start.Date),
+           minute = minute(Policy.Start.Date),
+           hour=hour(Policy.Start.Date),
+           week=week(Policy.Start.Date))
     #dbReadTable(con,'train_t')|> 
   
   #dbDisconnect(con)
@@ -57,7 +64,14 @@ get_train <- function(){
     tbl(con,'train') |>
     mutate(
       microsecond = as.numeric(substring(Policy.Start.Date,20,29)),
-      Policy.Start.Date = as_datetime(Policy.Start.Date))
+      Policy.Start.Date = as_datetime(Policy.Start.Date),
+      year = year(Policy.Start.Date),
+      month= month(Policy.Start.Date),
+      wday =wday(Policy.Start.Date),
+      #second=second(Policy.Start.Date),
+      #minute = minute(Policy.Start.Date),
+     #hour=hour(Policy.Start.Date),
+      week=week(Policy.Start.Date))
   #dbReadTable(con,'train_t')|> 
   
   #dbDisconnect(con)
@@ -69,7 +83,14 @@ get_test <- function(){
     tbl(con,'test')|>
     mutate(
       microsecond = as.numeric(substring(Policy.Start.Date,20,29)),
-      Policy.Start.Date = as_datetime(Policy.Start.Date))
+      Policy.Start.Date = as_datetime(Policy.Start.Date),
+      year = year(Policy.Start.Date),
+      month= month(Policy.Start.Date),
+      wday =wday(Policy.Start.Date),
+      #second=second(Policy.Start.Date),
+      #minute = minute(Policy.Start.Date),
+      #hour=hour(Policy.Start.Date),
+      week=week(Policy.Start.Date))
   
    # dbReadTable(con,'test') |>
   #dbDisconnect(con)
@@ -166,6 +187,11 @@ internal_get_grp_feature<- function(df){
             Age_cut = cut(Age,  breaks = result_pct$age_pct,  include.lowest=TRUE)
             
     )
+  tmp_dt <- tmp_df|>as.data.table()
+  tmp_dt[, missing_count := rowSums(is.na(.SD))]
+  missing_cnt_df <- tmp_dt|>select(id,missing_count)|>as_tibble()
+  rm(tmp_dt)
+  
   grp_df <-
     tmp_df |>
     group_by(across(all_of(grp_col)),.drop=TRUE ) |>
@@ -183,6 +209,8 @@ internal_get_grp_feature<- function(df){
     unnest_longer(col=ids,values_to='id',indices_to='id_seq')|>
     arrange(id)
   
+  grp_df <- grp_df |>
+    left_join(missing_cnt_df, by=c('id'))
   
   return(grp_df)
 }

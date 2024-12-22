@@ -16,6 +16,7 @@ library(bonsai)
 library(parsnip)
 library(recipes)
 library(dplyr)
+library(forcats)
 source('etl.R')
 source('utils.R')
 source('mod_board.R')
@@ -325,7 +326,7 @@ get_vmod_v0.8 <- function(nrows=Inf){
   
    rcp <- 
     recipes::recipe(truth ~.,df)|>
-    step_log(truth,offset=1) |>
+    step_log(all_outcomes(), offset = 1,skip=TRUE) |>
     step_date(date, features = c("dow", "month","year")) |>
     step_rm(date)|>
     #step_holiday(`Policy.Start.Date`, holidays = timeDate::listHolidays()) |>
@@ -371,7 +372,7 @@ get_vmod_v0.9 <- function(nrows=Inf){
   
    rcp <- 
     recipes::recipe(truth ~.,df)|>
-    step_log(truth,offset=1) |>
+    step_log(all_outcomes(), offset = 1,skip=TRUE) |>
     step_date(date, features = c("dow", "month","year")) |>
     step_time(date, features= c('second'))|>
     step_rm(date)|>
@@ -446,7 +447,7 @@ get_vmod_v0.10 <- function(nrows = Inf) {
   rcp <-
     recipes::recipe(truth ~ ., df) |>
     update_role(id, new_role='ID')|>
-    step_log(truth, offset = 1) |>
+    step_log(all_outcomes(), offset = 1,skip=TRUE) |>
     step_date(date, features = c("dow", "month", "year")) |>
     #    step_time(date, features= c('second'))|>
     #step_holiday(`Policy.Start.Date`, holidays = timeDate::listHolidays()) |>
@@ -548,7 +549,7 @@ get_vmod_v0.11 <- function(nrows = Inf) {
   rcp <-
     recipes::recipe(truth ~ ., df) |>
     update_role(id, new_role='ID')|>
-    step_log(truth, offset = 1) |>
+    step_log(all_outcomes(), offset = 1,skip=TRUE) |>
     step_date(date, features = c("dow", "month", "year")) |>
     #    step_time(date, features= c('second'))|>
     #step_holiday(`Policy.Start.Date`, holidays = timeDate::listHolidays()) |>
@@ -643,7 +644,7 @@ get_vmod_v1.0 <- function(nrows = Inf) {
   rcp <-
     recipes::recipe(truth ~ ., df) |>
     update_role(id, new_role='ID')|>
-    step_log(truth, offset = 1) |>
+    step_log(all_outcomes(), offset = 1,skip=TRUE) |>
     step_date(date, features = c("dow", "month", "year")) |>
     #    step_time(date, features= c('second'))|>
     #step_holiday(`Policy.Start.Date`, holidays = timeDate::listHolidays()) |>
@@ -692,6 +693,8 @@ get_vmod_v1.0 <- function(nrows = Inf) {
 }
 # vmod_v1.0 <- get_vmod_v1.0()
 ```
+
+
 ### -v1.01 - as.factor to add more value
 ```{r}
 
@@ -737,7 +740,7 @@ get_vmod_v1.01 <- function(nrows = Inf) {
   rcp <-
     recipes::recipe(truth ~ ., df) |>
     update_role(id, new_role='ID')|>
-    step_log(truth, offset = 1) |>
+    step_log(all_outcomes(), offset = 1,skip=TRUE) |>
     step_date(date, features = c("dow", "month", "year")) |>
     #    step_time(date, features= c('second'))|>
     #step_holiday(`Policy.Start.Date`, holidays = timeDate::listHolidays()) |>
@@ -795,10 +798,10 @@ get_vmod_v1.01 <- function(nrows = Inf) {
 }
 # vmod_v1.01 <- get_vmod_v1.01()
 ```
-### -v1.02 - add grp_col featuure which as seqency id 
+### -v1.02b - add grp_col featuure which as seqency id and log1p annual income
 ```{r}
 
-get_vmod_v1.02 <- function(nrows = Inf) {
+get_vmod_v1.02b <- function(nrows = Inf) {
   df <-get_train()
   
   result_pct <- df|> get_cut_pct()
@@ -818,7 +821,7 @@ get_vmod_v1.02 <- function(nrows = Inf) {
   rcp <-
     recipes::recipe(truth ~ ., df) |>
     update_role(id, new_role='ID')|>
-    step_log(truth, offset = 1) |>
+    step_log(all_outcomes(), offset = 1,skip=TRUE) |>
     step_date(date, features = c("dow", "month", "year")) |>
     #    step_time(date, features= c('second'))|>
     #step_holiday(`Policy.Start.Date`, holidays = timeDate::listHolidays()) |>
@@ -850,6 +853,7 @@ get_vmod_v1.02 <- function(nrows = Inf) {
 
     ) |>
     step_impute_median(all_numeric_predictors()) |>
+    step_log(Annual.Income,offset = 1)|>
     step_unknown(all_nominal_predictors()) |>
     step_rm(date) |>
     step_nzv(all_numeric_predictors()) |>
@@ -873,12 +877,12 @@ get_vmod_v1.02 <- function(nrows = Inf) {
   return(vmod)
   
 }
-# vmod_v1.02 <- get_vmod_v1.02()
+vmod_v1.02b <- get_vmod_v1.02b()
 ```
-### -v1.03 - add grp_col featuure and seconds features add microsecond feature
+### -v1.03l - add grp_col featuure and seconds features add microsecond feature
 ```{r}
 
-get_vmod_v1.03 <- function(nrows = Inf) {
+get_vmod_v1.03l <- function(nrows = Inf) {
   df <-get_train()
   
   result_pct <- df|> get_cut_pct()
@@ -891,12 +895,11 @@ get_vmod_v1.03 <- function(nrows = Inf) {
     recipes::recipe(truth ~ ., df) |>
     step_log(all_outcomes(), offset = 1,skip=TRUE) |>
     update_role(id, new_role='ID')|>
-    step_date(date, features = c("dow", "month", "year")) |>
+#    step_date(date, features = c("dow", "month", "year")) |>
     step_time(date, features= c('second'))|>
     #step_holiday(`Policy.Start.Date`, holidays = timeDate::listHolidays()) |>
-
     step_mutate(
-      Annual.Income_cut = cut(Annual.Income,  breaks = result_pct$income_pct, include.lowest=TRUE, include_outside_range = TRUE ),
+      Annual.Income_cut = cut(log1p(Annual.Income),  breaks = result_pct$income_pct, include.lowest=TRUE, include_outside_range = TRUE ),
       Credit.Score_cut = cut(Credit.Score,  breaks = result_pct$Credit_pct,  include.lowest=TRUE, include_outside_range = TRUE ),
       Health.Score_cut = cut(Health.Score,  breaks = result_pct$Health_pct,  include.lowest=TRUE, include_outside_range = TRUE ),
       Age_cut = cut(Age,  breaks = result_pct$age_pct,  include.lowest=TRUE, include_outside_range = TRUE ),
@@ -909,7 +912,7 @@ get_vmod_v1.03 <- function(nrows = Inf) {
       Age_cut = as.factor(Age_cut),
       microsecond_cut = as.factor(microsecond_cut),
       date_cut = as.factor(date_cut),
-      date_year = as_factor(date_year),
+      date_year = as_factor(year),
       Insurance.Duration = as_factor(Insurance.Duration),
       Previous.Claims = as_factor(Previous.Claims),
       Number.of.Dependents = as_factor(Number.of.Dependents),
@@ -920,13 +923,14 @@ get_vmod_v1.03 <- function(nrows = Inf) {
       Customer.Feedback=factor(Customer.Feedback, levels = c("Poor","Average",NA,"Good"), ordered = TRUE),
       Exercise.Frequency=factor(Exercise.Frequency, levels = c("Daily","Weekly",  "Monthly","Rarely"), ordered = TRUE),
       Smoking.Status=factor(Smoking.Status, levels = c("No","Yes"), ordered = TRUE),
-      Property.Type=factor(Property.Type, levels = c("Apartment","Condo","House"), ordered = TRUE),
-
+      Property.Type=factor(Property.Type, levels = c("Apartment","Condo","House"), ordered = TRUE)
     ) |>
     step_impute_median(all_numeric_predictors()) |>
     step_unknown(all_nominal_predictors()) |>
+    step_log(Annual.Income,offset = 1)|>
     step_rm(date) |>
-    step_nzv(all_numeric_predictors()) |>
+    step_nzv(all_predictors()) |>
+#    step_corr(all_numeric_predictors(), threshold = 0.8)|>
     step_pca(all_numeric_predictors(),num_comp = 50) 
     #check_missing(all_predictors())
   
@@ -944,19 +948,21 @@ get_vmod_v1.03 <- function(nrows = Inf) {
       name = current_function_name,
       description = 'v1.03 add grouped feature & seconds feature',
       is_log1py = TRUE,
-      return_wf = TRUE
+      return_wf =FALSE 
     )
   return(vmod)
   
 }
-vmod_v1.03 <- get_vmod_v1.03()
+vmod_v1.03l<- get_vmod_v1.03l()
 ```
 
 
-### -v1.03_b - basedon v1.03 and revise dummy feature
+
+### -v1.1 feature engineering on microsecond and year which as cosine period relation
 ```{r}
 
-get_vmod_v1.03_b <- function(nrows = Inf) {
+
+get_vmod_v1.1 <- function(nrows = Inf) {
   df <-get_train()
   
   result_pct <- df|> get_cut_pct()
@@ -969,12 +975,17 @@ get_vmod_v1.03_b <- function(nrows = Inf) {
     recipes::recipe(truth ~ ., df) |>
     step_log(all_outcomes(), offset = 1,skip=TRUE) |>
     update_role(id, new_role='ID')|>
-    step_date(date, features = c("dow", "month", "year")) |>
-    step_time(date, features= c('second'))|>
+    step_mutate(sin_ms = sin(2*pi * microsecond),
+                cos_ms = cos(2*pi * microsecond),
+                inv_year_ms =year * microsecond,
+                angle_theta = atan2(year, microsecond),  # Angle
+                magnitude = sqrt(year**2 + microsecond**2)  # Magnitude
+    )|>
+
     #step_holiday(`Policy.Start.Date`, holidays = timeDate::listHolidays()) |>
 
     step_mutate(
-      Annual.Income_cut = cut(Annual.Income,  breaks = result_pct$income_pct, include.lowest=TRUE, include_outside_range = TRUE ),
+      Annual.Income_cut = cut(log1p(Annual.Income),  breaks = result_pct$income_cut, include.lowest=TRUE, include_outside_range = TRUE ),
       Credit.Score_cut = cut(Credit.Score,  breaks = result_pct$Credit_pct,  include.lowest=TRUE, include_outside_range = TRUE ),
       Health.Score_cut = cut(Health.Score,  breaks = result_pct$Health_pct,  include.lowest=TRUE, include_outside_range = TRUE ),
       Age_cut = cut(Age,  breaks = result_pct$age_pct,  include.lowest=TRUE, include_outside_range = TRUE ),
@@ -987,42 +998,25 @@ get_vmod_v1.03_b <- function(nrows = Inf) {
       Age_cut = as.factor(Age_cut),
       microsecond_cut = as.factor(microsecond_cut),
       date_cut = as.factor(date_cut),
-      date_year = as_factor(date_year),
+      date_year = as_factor(year),
       Insurance.Duration = as_factor(Insurance.Duration),
       Previous.Claims = as_factor(Previous.Claims),
       Number.of.Dependents = as_factor(Number.of.Dependents),
-      Gender = factor(Gender, levels = c("Male", "Female"), ordered = TRUE),
-      Education.Level =factor(Education.Level, levels = c( "High School","Bachelor's","Master's", "PhD"), ordered = TRUE),
+      Gender=factor(Gender, levels = c("Male", "Female"), ordered = TRUE),
+      Education.Level=factor(Education.Level, levels = c( "High School","Bachelor's","Master's", "PhD"), ordered = TRUE),
       Occupation=factor(Occupation, levels = c("Unemployed","Employed","Self-Employed","NA"), ordered = TRUE),
-      Policy.Type =factor(Policy.Type, levels = c("Basic","Comprehensive", "Premium"), ordered = TRUE),
+      Policy.Type=factor(Policy.Type, levels = c("Basic","Comprehensive", "Premium"), ordered = TRUE),
       Customer.Feedback=factor(Customer.Feedback, levels = c("Poor","Average",NA,"Good"), ordered = TRUE),
       Exercise.Frequency=factor(Exercise.Frequency, levels = c("Daily","Weekly",  "Monthly","Rarely"), ordered = TRUE),
       Smoking.Status=factor(Smoking.Status, levels = c("No","Yes"), ordered = TRUE),
       Property.Type=factor(Property.Type, levels = c("Apartment","Condo","House"), ordered = TRUE),
-
     ) |>
-
+  
     step_impute_median(all_numeric_predictors()) |>
     step_unknown(all_nominal_predictors()) |>
+   step_log(Annual.Income,offset = 1)|>
     step_rm(date) |>
-    step_dummy(Annual.Income_cut,
-               Credit.Score_cut,
-               Health.Score_cut,
-               Age_cut,
-               microsecond_cut,
-               date_cut,
-               date_year,
-               Insurance.Duration,
-               Previous.Claims,
-               Number.of.Dependents,
-               Gender,
-               Education.Level,
-               Property.Type,
-               Customer.Feedback,
-               Exercise.Frequency,
-               Smoking.Status,
-               Property.Type)|>
-    step_nzv(all_numeric_predictors()) |>
+    step_nzv(all_predictors()) |>
     step_pca(all_numeric_predictors(),num_comp = 50) 
     #check_missing(all_predictors())
   
@@ -1032,21 +1026,22 @@ get_vmod_v1.03_b <- function(nrows = Inf) {
     sys.calls() |>
     as.character() |>
     gsub('()', '', x = _, fixed = T)
-  
+  print('start training') 
   vmod <-
     get_fit_wf(
       rcp,
       data = df,
       name = current_function_name,
-      description = 'v1.03_b add grouped feature & seconds feature',
+      description = '1.1. based on v1.03 add grouped feature & seconds feature',
       is_log1py = TRUE,
-      return_wf = TRUE
+      return_wf =FALSE 
     )
   return(vmod)
   
 }
-vmod_v1.03_b <- get_vmod_v1.03_b()
+vmod_v1.1<- get_vmod_v1.1()
 ```
+
 ### -v1.04 - using lightgbm
 ```{r}
 
@@ -1063,10 +1058,9 @@ get_vmod_v1.04 <- function(nrows = Inf) {
     recipes::recipe(truth ~ ., df) |>
     step_log(all_outcomes(), offset = 1,skip=TRUE) |>
     update_role(id, new_role='ID')|>
-    step_date(date, features = c("dow", "month", "year")) |>
-    step_time(date, features= c('second'))|>
+    #step_date(date, features = c("dow", "month", "year")) |>
+    #step_time(date, features= c('second'))|>
     #step_holiday(`Policy.Start.Date`, holidays = timeDate::listHolidays()) |>
-
     step_mutate(
       Annual.Income_cut = cut(Annual.Income,  breaks = result_pct$income_pct, include.lowest=TRUE, include_outside_range = TRUE ),
       Credit.Score_cut = cut(Credit.Score,  breaks = result_pct$Credit_pct,  include.lowest=TRUE, include_outside_range = TRUE ),
@@ -1079,7 +1073,6 @@ get_vmod_v1.04 <- function(nrows = Inf) {
       Health.Score_cut = as.factor(Health.Score_cut),
       Age_cut = as.factor(Age_cut),
       date_cut = as.factor(date_cut),
-      date_year = as_factor(date_year),
       Insurance.Duration = as_factor(Insurance.Duration),
       Previous.Claims = as_factor(Previous.Claims),
       Number.of.Dependents = as_factor(Number.of.Dependents),
@@ -1091,18 +1084,20 @@ get_vmod_v1.04 <- function(nrows = Inf) {
       Exercise.Frequency=factor(Exercise.Frequency, levels = c("Daily","Weekly",  "Monthly","Rarely"), ordered = TRUE),
       Smoking.Status=factor(Smoking.Status, levels = c("No","Yes"), ordered = TRUE),
       Property.Type=factor(Property.Type, levels = c("Apartment","Condo","House"), ordered = TRUE),
-
     ) |>
     step_integer(all_nominal_predictors()) |>
     step_impute_median(all_numeric_predictors()) |>
     step_unknown(all_nominal_predictors()) |>
+    step_log(Annual.Income,offset=1)|>
     step_rm(date) |>
-    step_nzv(all_numeric_predictors()) |>
+    step_nzv(all_predictors()) |>
     #step_pca(all_numeric_predictors(),num_comp = 100)|>
+    step_corr(all_numeric_predictors(),threshold = 0.9)|>
     check_missing(all_predictors())
-  # 
-  # baked_df<-  rcp|>prep()|>bake(df) 
-  # 
+  # print('checking baked rcp') 
+  #  baked_df<-  rcp|>prep()|>bake(df|>head(10000)) 
+  #  baked_df <- NULL 
+  # print('check rcp done!')
   current_function_name <-
     sys.calls() |>
     as.character() |>
@@ -1124,9 +1119,9 @@ get_vmod_v1.04 <- function(nrows = Inf) {
   # fit_mod <- 
   #   fit_wf |> 
   #   extract_fit_engine()
-   
+  print('start training') 
   vmod <-
-    get_fit_lgb_wf(
+    get_fit_lgbwf(
       rcp,
       data = df,
       name = current_function_name,
@@ -1145,7 +1140,7 @@ vmod_v1.04 <- get_vmod_v1.04()
 ```{r}
 #DONE know why some insurance premium amount was so low - Annaul income is very important
 #DONE 20 price buying pattern related to time. False. everyday. happened. it related to group people. 
-# TODO is there pattern that, group by high price insuance first and then buy low price. later. It may related to time series .2019-early of 2020 is very high.  and people
+#DONE The answer is no. Is there pattern that, group by high price insuance first and then buy low price. later. It may related to time series .2019-early of 2020 is very high.  and people
 
 # DONE the dataset was generated by deep learning process. find the pattern. continue. it break down to several new.
 
@@ -1158,7 +1153,7 @@ vmod_v1.04 <- get_vmod_v1.04()
 # Done-skip add daily total,avg , mean ,sd based on train basedon group 
 # DONE - add sequency id
 # DONE - the Premium Amount first digit 4,5,6,7,8,9 do not follow ben ford role. when ding sampling, it should be considered.
-# TODO publish notebook
+# DONE - skip. publish notebook
 
 ```
 
@@ -1174,7 +1169,7 @@ show_model_permformance() %>%
   geom_text(aes(x = id, y = .estimate, label = .estimate), 
             hjust = -0.2, vjust = 0.5, size = 5, color = "red") +
   #geom_hline(yintercept = .estimate) +
-  scale_y_continuous(limits=c(1.0,2.10),
+  scale_y_continuous(limits=c(0.8,1.10),
                      #breaks= seq(0.8, 1.2,by = 0.1)
                      )+
   labs (title = 'model performance board',
@@ -1191,7 +1186,7 @@ show_model_permformance() %>%
 ```{r}
 
  
-  get_mods_log_residual(mod_name_pattern = 'get_vmod_v0.9|v1.03')|>
+  get_mods_log_residual(mod_name_pattern = 'v1.04|v1.1')|>
   ggplot(aes(x = value, fill = name,color=name)) +
   geom_density(alpha = 0.1) +
   labs(title = "Overlaid Density Plots", x = "Values", y = "Density") +
@@ -1241,11 +1236,11 @@ save_submit <-function(best_mod ){
   result_pct <- df|> get_cut_pct()
   grp_col <- df |>get_grp_feature()
   
-  test_data<-
+  df<-
     df|>get_enrich_df()
 
   pred <- best_mod|>
-    predict(test_data)|>
+    predict(df)|>
     pull(.pred)
   
   get_sample() |>
@@ -1321,7 +1316,7 @@ get_rpart_plot <- function() {
   rcp <-
     recipes::recipe(truth ~ ., df) |>
     update_role(id, new_role = 'ID') |>
-    step_log(truth, offset = 1) |>
+    step_log(all_outcomes(), offset = 1,skip=TRUE) |>
     step_date(date, features = c("dow", "month", "year")) |>
     #    step_time(date, features= c('second'))|>
     #step_holiday(`Policy.Start.Date`, holidays = timeDate::listHolidays()) |>

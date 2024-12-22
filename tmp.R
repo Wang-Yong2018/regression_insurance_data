@@ -99,9 +99,3 @@ lgbm_res
 #> 
 #> 
 #> 
-#> lgbm_best <- select_best(lgbm_res, metric = "mae")
-lgbm_bestdata:image/png;base64,iVBORw0KGgoAAAANSUhEUgAAABIAAAASCAYAAABWzo5XAAAAbElEQVR4Xs2RQQrAMAgEfZgf7W9LAguybljJpR3wEse5JOL3ZObDb4x1loDhHbBOFU6i2Ddnw2KNiXcdAXygJlwE8OFVBHDgKrLgSInN4WMe9iXiqIVsTMjH7z/GhNTEibOxQswcYIWYOR/zAjBJfiXh3jZ6AAAAAElFTkSuQmCC
-#> # A tibble: 1 × 6
-#>   trees min_n learn_rate `agent hash` `company hash` .config              
-#>   <int> <int>      <dbl>        <int>          <int> <chr>                
-#> 1  1890    10     0.0159          115            174 Preprocessor12_Model1
