@@ -19,8 +19,9 @@ library(dplyr)
 library(forcats)
 source('etl.R')
 source('utils.R')
+source('insurance_rec.R')
 source('mod_board.R')
-init_db(do=FALSE) # when first time using it, the do parameter should be changed to TRUE as below 
+init_db(do = FALSE) # when first time using it, the do parameter should be changed to TRUE as below 
 # init_db(do =TRUE)
 ```
 
@@ -879,39 +880,42 @@ get_vmod_v1.02b <- function(nrows = Inf) {
 }
 vmod_v1.02b <- get_vmod_v1.02b()
 ```
-### -v1.03l - add grp_col featuure and seconds features add microsecond feature
+### -v1.03cut - add grp_col featuure and seconds features add microsecond feature
 ```{r}
 
-get_vmod_v1.03l <- function(nrows = Inf) {
-  df <-get_train()
+get_vmod_v1.03_cut <- function(nrows = Inf) {
   
-  result_pct <- df|> get_cut_pct()
-  grp_col <- df |>get_grp_feature()
-  
-  df<-
-    df|>get_enrich_df()
+ df<-
+    get_train() |>
+    get_enrich_df()
   
   rcp <-
     recipes::recipe(truth ~ ., df) |>
     step_log(all_outcomes(), offset = 1,skip=TRUE) |>
     update_role(id, new_role='ID')|>
 #    step_date(date, features = c("dow", "month", "year")) |>
-    step_time(date, features= c('second'))|>
+    step_impute_median(all_numeric_predictors()) |>
+    #step_time(date, features= c('second'))|>
     #step_holiday(`Policy.Start.Date`, holidays = timeDate::listHolidays()) |>
+    #step_mutate(
+      #Annual.Income_cut = cut(log1p(Annual.Income),  breaks = result_pct$income_pct, include.lowest=TRUE, include_outside_range = TRUE ),
+      #Credit.Score_cut = cut(Credit.Score,  breaks = result_pct$Credit_pct,  include.lowest=TRUE, include_outside_range = TRUE ),
+      #Health.Score_cut = cut(Health.Score,  breaks = result_pct$Health_pct,  include.lowest=TRUE, include_outside_range = TRUE ),
+      #Age_cut = cut(Age,  breaks = result_pct$age_pct,  include.lowest=TRUE, include_outside_range = TRUE ),
+      #microsecond_cut = cut(microsecond,  breaks = result_pct$microsecond_pct,  include.lowest=TRUE, include_outside_range = TRUE ),
+      #date_cut = cut(date, breaks = result_pct$date_pct, include.lowest=TRUE,  include_outside_range = TRUE))|>
+    step_integer(date)|>
+    step_mutate(Annual.Income.Raw=Annual.Income)|>
+    step_discretize(Annual.Income, date, num_breaks =20) |>
+    step_discretize(Credit.Score,Health.Score,Age, num_breaks=10) |>
+    step_discretize(microsecond,  num_breaks =10)|>
     step_mutate(
-      Annual.Income_cut = cut(log1p(Annual.Income),  breaks = result_pct$income_pct, include.lowest=TRUE, include_outside_range = TRUE ),
-      Credit.Score_cut = cut(Credit.Score,  breaks = result_pct$Credit_pct,  include.lowest=TRUE, include_outside_range = TRUE ),
-      Health.Score_cut = cut(Health.Score,  breaks = result_pct$Health_pct,  include.lowest=TRUE, include_outside_range = TRUE ),
-      Age_cut = cut(Age,  breaks = result_pct$age_pct,  include.lowest=TRUE, include_outside_range = TRUE ),
-      microsecond_cut = cut(microsecond,  breaks = result_pct$microsecond_pct,  include.lowest=TRUE, include_outside_range = TRUE ),
-      date_cut = cut(date, breaks = result_pct$date_pct, include.lowest=TRUE,  include_outside_range = TRUE))|>
-    step_mutate(
-      Annual.Income_cut = as.factor(Annual.Income_cut),
-      Credit.Score_cut = as.factor(Credit.Score_cut),
-      Health.Score_cut = as.factor(Health.Score_cut),
-      Age_cut = as.factor(Age_cut),
-      microsecond_cut = as.factor(microsecond_cut),
-      date_cut = as.factor(date_cut),
+      # Annual.Income_cut = as.factor(Annual.Income_cut),
+      # Credit.Score_cut = as.factor(Credit.Score_cut),
+      # Health.Score_cut = as.factor(Health.Score_cut),
+      # Age_cut = as.factor(Age_cut),
+      # microsecond_cut = as.factor(microsecond_cut),
+      # date_cut = as.factor(date_cut),
       date_year = as_factor(year),
       Insurance.Duration = as_factor(Insurance.Duration),
       Previous.Claims = as_factor(Previous.Claims),
@@ -925,9 +929,8 @@ get_vmod_v1.03l <- function(nrows = Inf) {
       Smoking.Status=factor(Smoking.Status, levels = c("No","Yes"), ordered = TRUE),
       Property.Type=factor(Property.Type, levels = c("Apartment","Condo","House"), ordered = TRUE)
     ) |>
-    step_impute_median(all_numeric_predictors()) |>
     step_unknown(all_nominal_predictors()) |>
-    step_log(Annual.Income,offset = 1)|>
+    step_log(Annual.Income.Raw,offset = 1)|>
     step_rm(date) |>
     step_nzv(all_predictors()) |>
 #    step_corr(all_numeric_predictors(), threshold = 0.8)|>
@@ -946,14 +949,14 @@ get_vmod_v1.03l <- function(nrows = Inf) {
       rcp,
       data = df,
       name = current_function_name,
-      description = 'v1.03 add grouped feature & seconds feature',
+      description = 'v1.03_cut',
       is_log1py = TRUE,
-      return_wf =FALSE 
+      return_wf =TRUE 
     )
   return(vmod)
   
 }
-vmod_v1.03l<- get_vmod_v1.03l()
+vmod_v1.03_cut<- get_vmod_v1.03_cut()
 ```
 
 
@@ -1048,7 +1051,7 @@ vmod_v1.1<- get_vmod_v1.1()
 get_vmod_v1.04 <- function(nrows = Inf) {
   df <-get_train()
   
-  result_pct <- df|> get_cut_pct()
+  #result_pct <- df|> get_cut_pct()
   grp_col <- df |>get_grp_feature()
   
   df<-
@@ -1127,7 +1130,8 @@ get_vmod_v1.04 <- function(nrows = Inf) {
       name = current_function_name,
       description = 'v1.04 lightgbm with v1.03 feature',
       is_log1py = TRUE,
-      return_wf = TRUE
+      return_wf = TRUE,
+      tree_depth=40
     )
   return(vmod)
   
@@ -1160,6 +1164,13 @@ vmod_v1.04 <- get_vmod_v1.04()
 
 ```
 
+
+### - v1.1 workflowset
+```{r}
+best_mod <- get_fit_wset(cv=10)
+
+```
+
 ## 2.3 vetiver
 ## version model
 
@@ -1189,7 +1200,7 @@ show_model_permformance() %>%
 ```{r}
 
  
-  get_mods_log_residual(mod_name_pattern = 'v1.04|v1.1')|>
+  get_mods_log_residual(mod_name_pattern = 'v1.03_cut|v1.1|v1.04')|>
   ggplot(aes(x = value, fill = name,color=name)) +
   geom_density(alpha = 0.1) +
   labs(title = "Overlaid Density Plots", x = "Values", y = "Density") +
@@ -1229,10 +1240,10 @@ year_log_resi|>
 # 3. predict and submit
 by use trained work flow to predict and submit
 ```{r}
-best_mod <- vmod_v1.04
+best_mod <- vmod_v1.03_cut
 save_submit <-function(best_mod ){
   
-  submit_file_name <- 'output/sample_submit.csv_v1.04_microsec.gz'
+  submit_file_name <- 'output/sample_submit.csv_v1.03_cut.gz'
   
   df <-get_test()
   
