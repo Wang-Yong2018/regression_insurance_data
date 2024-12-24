@@ -527,6 +527,7 @@ save_fited_workflow <-function(wf,
   
   tidy_augment <- 
     wf |>
+    fit({{data}})|>
     predict({{data}}) |>
     bind_cols({{data}})
   
