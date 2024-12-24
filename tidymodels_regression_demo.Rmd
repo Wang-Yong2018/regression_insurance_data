@@ -1167,7 +1167,7 @@ vmod_v1.04 <- get_vmod_v1.04()
 
 ### - v1.1 workflowset
 ```{r}
-best_mod <- get_fit_wset(cv=10)
+best_mod <- get_fit_wset(cv=3)
 
 ```
 

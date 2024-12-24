@@ -91,7 +91,8 @@ get_lgb_eng <- function(trees = 500,
 get_tuned_eng_list <- function(){
 
   tune_mod_list <- 
-    list(tune_lgb=get_lgb_eng(num_leaves = tune(),#key factor 1
+    list(tune_lgb=get_lgb_eng(trees= tune(),
+                              num_leaves = tune(),#key factor 1
                               tree_depth=tune(), # key factor 3
                               min_n=tune() # key factor 2
     ))
@@ -462,7 +463,8 @@ get_tune_grid <- function(){
   params <- parameters(
     trees(range = c(300,700 )),  # Number of trees (500 to 1500)
     num_leaves(range=c(700,1000)),
-    tree_depth(range = c(10, 50))  # Tree depth (4 to 8)
+    tree_depth(range = c(10, 50)), # Tree depth (4 to 8)
+    min_n(range=c(50,300))
     #learn_rate(range = c(-2, -1)) # Learning rate (log scale: 0.001 to 0.1)
   )
   grid <- grid_space_filling(params,size=10)
@@ -476,12 +478,7 @@ get_tuned_wset <- function(cv = 10, init_seed = 1234) {
     get_train() |>
     get_enrich_df()
   
-  # tune_mod_list <- 
-  #   list(tune_lgb=get_lgb_eng(num_leaves = tune(),#key factor 1
-  #                             tree_depth=tune(), # key factor 3
-  #                             min_n=tune() # key factor 2
-  #                             ))
-  
+
   chi_models <-
     workflow_set(preproc = get_input_rcp_list(df) ,
                  models = get_tuned_eng_list(),
@@ -493,10 +490,10 @@ get_tuned_wset <- function(cv = 10, init_seed = 1234) {
     # The first argument is a function name from the {{tune}} package
     # such as `tune_grid()`, `fit_resamples()`, etc.
     workflow_map(
-      fn = "fit_resamples",
+      fn = "tune_grid",
       resamples = vfold_cv(df, v = cv),
-      metrics = metric_set(rmse, rsq),
-      grid=get_tune_parameters(),
+      #metrics = metric_set(rmse, rsq),
+      grid=get_tune_grid(),
       seed = init_seed,
       verbose = TRUE
     )
