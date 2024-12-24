@@ -472,13 +472,10 @@ get_tune_grid <- function(){
 }
 
 get_tuned_wset <- function(cv = 10, init_seed = 1234) {
-  
-  
   df <- 
     get_train() |>
     get_enrich_df()
   
-
   chi_models <-
     workflow_set(preproc = get_input_rcp_list(df) ,
                  models = get_tuned_eng_list(),
@@ -511,7 +508,6 @@ get_tuned_wset <- function(cv = 10, init_seed = 1234) {
   best_wf <-
     fit_chi_models |>
     fit_best(metric = "rmse", verbose = TRUE)
-  
   return(best_wf)
   
 }
