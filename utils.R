@@ -16,11 +16,13 @@ library(workflowsets)
 source('etl.R')
 source('insurance_rec.R')
 source('mod_board.R')
+
 rmsel <- function(data,
                   truth = 'truth',
                   estimate = 'estimate',
-                  na_rm = TRUE) {
-  #  data|>glimpse()
+                  na_rm = TRUE){
+  
+  # data |> glimpse()
   data |>
     dplyr::select(truth = {{truth}}, 
            estimate = {{estimate}}) |>
@@ -84,6 +86,17 @@ get_lgb_eng <- function(trees = 500,
   
   return(lgb_eng)
   
+}
+
+get_tuned_eng_list <- function(){
+
+  tune_mod_list <- 
+    list(tune_lgb=get_lgb_eng(num_leaves = tune(),#key factor 1
+                              tree_depth=tune(), # key factor 3
+                              min_n=tune() # key factor 2
+    ))
+  
+  return(tune_mod_list)
 }
 
 get_lgb_wf <- function() {
@@ -396,7 +409,8 @@ get_input_rcp_list <- function(df){
 get_input_eng_list <- function() {
   lm_eng <- get_lm_eng()
   lgb_eng <- get_lgb_eng()
-  eng_list <- list(lgb = lgb_eng, linear = lm_eng)
+  eng_list <- list(lgb = lgb_eng, 
+                   linear = lm_eng)
   return(eng_list)
 }
 
@@ -441,4 +455,136 @@ get_fit_wset <- function(cv = 3, init_seed = 1234) {
   
   return(best_wf)
   
+}
+
+get_tune_grid <- function(){
+  
+  params <- parameters(
+    trees(range = c(300,700 )),  # Number of trees (500 to 1500)
+    num_leaves(range=c(700,1000)),
+    tree_depth(range = c(10, 50))  # Tree depth (4 to 8)
+    #learn_rate(range = c(-2, -1)) # Learning rate (log scale: 0.001 to 0.1)
+  )
+  grid <- grid_space_filling(params,size=10)
+  return(grid)
+}
+
+get_tuned_wset <- function(cv = 10, init_seed = 1234) {
+  
+  
+  df <- 
+    get_train() |>
+    get_enrich_df()
+  
+  # tune_mod_list <- 
+  #   list(tune_lgb=get_lgb_eng(num_leaves = tune(),#key factor 1
+  #                             tree_depth=tune(), # key factor 3
+  #                             min_n=tune() # key factor 2
+  #                             ))
+  
+  chi_models <-
+    workflow_set(preproc = get_input_rcp_list(df) ,
+                 models = get_tuned_eng_list(),
+                 cross = TRUE) |>
+    option_add(control = control_grid(save_workflow = TRUE))
+  
+  fit_chi_models <-
+    chi_models %>%
+    # The first argument is a function name from the {{tune}} package
+    # such as `tune_grid()`, `fit_resamples()`, etc.
+    workflow_map(
+      fn = "fit_resamples",
+      resamples = vfold_cv(df, v = cv),
+      metrics = metric_set(rmse, rsq),
+      grid=get_tune_parameters(),
+      seed = init_seed,
+      verbose = TRUE
+    )
+  
+  # print the best rank result of rmse
+  best_result <- 
+    rank_results(fit_chi_models,  rank_metric = "rmse",  select_best = TRUE) |>
+    select(rank, mean, model, wflow_id, .config)
+  print(best_result) 
+  # plot all the resmaple fit result 
+  autoplot(fit_chi_models)
+  
+  print('found the best model and finalizing now.')
+  
+  best_wf <-
+    fit_chi_models |>
+    fit_best(metric = "rmse", verbose = TRUE)
+  
+  return(best_wf)
+  
+}
+
+save_fited_workflow <-function(wf, 
+                               data, 
+                               name='unknown',
+                               description='unknown',
+                               is_log1p=TRUE){
+  
+  tidy_augment <- 
+    wf |>
+    predict({{data}}) |>
+    bind_cols({{data}})
+  
+  if (is_log1py == TRUE) {
+    # if the outcome variable is log1p transformed in recipes.
+    # the .pred , truth should be reverse to original scale.
+    # as the log1p residual just minus
+    tidy_augment <-
+      tidy_augment |>
+      mutate( .pred = exp(.pred) + 1)
+  } 
+  
+  tidy_augment <-
+    tidy_augment |>
+    mutate(log1p_residual = log1p(.pred) - log1p(truth))
+  
+  rmsel_value <-
+    tidy_augment  |>
+    rmsel(truth, .pred) |>
+    pull(.estimate)
+  
+  rmse_value <-
+    tidy_augment |>
+    rmse(truth, .pred) |>
+    pull(.estimate)
+  rsq_value <-
+    tidy_augment |>
+    rsq(truth, .pred) |>
+    pull(.estimate)
+  
+  glance_mod <-
+    data.frame(id = 0) |>
+    mutate(rmse = rmse_value,
+           rmsel = rmsel_value,
+           rsq = rsq_value)
+  
+ 
+  log_residual <- 
+    tidy_augment |> 
+    dplyr::select(any_of(c('id', 'log1p_residual')))
+  
+  vetiver_mod <- vetiver_model(
+    model = wf,
+    model_name = {{name}} ,
+    description = {{description}},
+    metadata = list(metrics = glance_mod, residuals = log_residual)
+  )
+  
+  vetiver_mod$metadata$user$metrics  |>
+    pivot_longer(cols = everything()) |>
+    filter(grepl('rmse|rsq', name)) |>
+    print()
+  
+  keep_model(vetiver_mod)
+  if (return_wf == TRUE) {
+    result <- fit_wf
+  } else{
+    result <- fit_mod
+  }
+  return(result)
 }

@@ -6,7 +6,7 @@ get_rcp_v1.13_cut <- function(df){
 rcp <-
   
   recipes::recipe(truth~., df) |>
-  step_log(all_outcomes(), offset = 1) |>
+  step_log(all_outcomes(), offset = 1,skip=TRUE) |>
   update_role(id, new_role='ID')|>
   #    step_date(date, features = c("dow", "month", "year")) |>
   step_impute_median(all_numeric_predictors()) |>
