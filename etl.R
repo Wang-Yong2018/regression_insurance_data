@@ -226,8 +226,6 @@ internal_get_grp_feature <- function(df) {
 }
 
 
-
-
 internal_get_weekly_premium <- function() {
   weekly_df <-
     get_train() |>
@@ -258,7 +256,6 @@ internal_get_weekly_premium <- function() {
 }
 
 
-
 get_enrich_weekly_premium <- function(df) {
   weekly_premium_df <- internal_get_weekly_premium()
   weekly_id_df <-
@@ -276,6 +273,28 @@ get_enrich_weekly_premium <- function(df) {
     select(-c('year', 'week', 'wday', 'date'))
   return(weekly_id_df)
 }
+
+
+
+get_day_sequence <- function(df){
+  
+  result <-
+    df|>
+    group_by( date) |>
+    summarize(
+      n=n(),
+      rn=row_number(),
+      ids = list(id),
+      .groups = 'drop' ) |>
+    ungroup() |>
+    select(-date) |>
+    unnest_longer(col = ids,
+                  values_to = 'id',
+                 ) |>
+  arrange(id)
+}
+
+
 
 internal_get_enrich_df <- function(input_df) {
   df <-
@@ -306,9 +325,18 @@ internal_get_enrich_df <- function(input_df) {
     left_join(grp_col, by = 'id') |>
     left_join(weekly_premium_df, by = 'id')
   
+  date_seq_df <- 
+    enriched_df |>
+    get_day_seqence()
+  
+  # enriched_df <-
+  #   enriched_df |>
+  #   left_join(date_seq_df, by='date')
+  # 
   if ('Premium.Amount' %in% names(enriched_df)) {
     enriched_df <- enriched_df |>
-      rename(truth = Premium.Amount)
+      rename(truth = Premium.Amount)|>
+      mutate(truth=log1p(truth))
   }
   
   return(enriched_df)
@@ -318,3 +346,4 @@ internal_get_enrich_df <- function(input_df) {
 get_grp_feature <- memoise(internal_get_grp_feature, cache = cm)
 get_weekly_premium <- memoise(internal_get_weekly_premium, cache = cm)
 get_enrich_df <- memoise(internal_get_enrich_df, cache = cd)
+

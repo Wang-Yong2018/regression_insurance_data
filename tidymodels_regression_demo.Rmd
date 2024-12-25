@@ -1167,10 +1167,31 @@ vmod_v1.04 <- get_vmod_v1.04()
 
 ### - v1.1 workflowset
 ```{r}
-best_mod <-
+  df <- get_train()|>get_enrich_df()
+  rcp_funcs <- list(
+    #rcp_v0.8 = get_rcp_v0.8,
+    #rcp_v0.9 = get_rcp_v0.9,
+    get_rcp_v1.14= get_rcp_v1.14,
+    rcp_v1.13_cut = get_rcp_v1.13_cut )
+
+  rcp_list <- map(rcp_funcs, ~ .x(df)|>check_missing())
+  
+
+library(doParallel)
+n_cores <- 4  # Leave one core free
+
+# Register the parallel backend
+cl <- makeCluster(n_cores)
+registerDoParallel(cl)
+
+get_fit_wset(df, rcp_list,cv=5)
+  
+stopCluster(cl)
+  
+
 
 ```
-
+ 
 ## 2.3 vetiver
 ## version model
 

@@ -51,7 +51,7 @@ get_lm_wf <- function(){
 
 get_lgb_eng <- function(trees = 500,
                         tree_depth = 40,
-                        learn_rate = 0.05,
+                        learn_rate = 0.1,
                         mtry=0.8,
                         sample_size = 0.8,
                         stop_iter=10,
@@ -410,23 +410,19 @@ get_input_rcp_list <- function(df){
 get_input_eng_list <- function() {
   lm_eng <- get_lm_eng()
   lgb_eng <- get_lgb_eng()
-  eng_list <- list(lgb = lgb_eng, 
+  eng_list <- list(#lgb = lgb_eng, 
                    linear = lm_eng)
   return(eng_list)
 }
 
-get_fit_wset <- function(cv = 3, init_seed = 1234) {
+get_fit_wset <- function(df, rcps, cv = 3, init_seed = 1234,is_save=FALSE) {
   
-  
-  df <- 
-    get_train() |>
-    get_enrich_df()
   
   chi_models <-
-    workflow_set(preproc = get_input_rcp_list(df) ,
+    workflow_set(preproc =rcps,
                  models = get_input_eng_list(),
                  cross = TRUE) |>
-    option_add(control = control_grid(save_workflow = TRUE))
+    option_add(control = control_grid(save_workflow = is_save))
   
   fit_chi_models <-
     chi_models %>%
@@ -446,15 +442,15 @@ get_fit_wset <- function(cv = 3, init_seed = 1234) {
     select(rank, mean, model, wflow_id, .config)
   print(best_result) 
   # plot all the resmaple fit result 
-  autoplot(fit_chi_models)
+  autoplot(fit_chi_models)|>print()
   
   print('found the best model and finalizing now.')
   
-  best_wf <-
-    fit_chi_models |>
-    fit_best(metric = "rmse", verbose = TRUE)
+  # best_wf <-
+  #   fit_chi_models |>
+  #   fit_best(metric = "rmse", verbose = TRUE)
   
-  return(best_wf)
+  return(fit_chi_models)
   
 }
 
@@ -471,9 +467,9 @@ get_tune_grid <- function(){
   return(grid)
 }
 
-get_tuned_wset <- function(cv = 10, init_seed = 1234) {
+get_tuned_wset <- function(cv = 3, init_seed = 1234) {
   df <- 
-    get_train() |>
+    get_train()|>head(20000)|>
     get_enrich_df()
   
   chi_models <-
@@ -487,10 +483,10 @@ get_tuned_wset <- function(cv = 10, init_seed = 1234) {
     # The first argument is a function name from the {{tune}} package
     # such as `tune_grid()`, `fit_resamples()`, etc.
     workflow_map(
-      fn = "tune_grid",
+      fn = "fit_resmaples",
       resamples = vfold_cv(df, v = cv),
       #metrics = metric_set(rmse, rsq),
-      grid=get_tune_grid(),
+      #grid=get_tune_grid(),
       seed = init_seed,
       verbose = TRUE
     )
