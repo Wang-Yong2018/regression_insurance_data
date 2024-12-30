@@ -60,9 +60,9 @@ keep_model_full <- function(mod=NULL, compress=TRUE){
   # Create a vetiver object for deployment of above trained model
   # Create a vetiver_model() object based on about model ,name, rmse score and residual
   vetiver_model <- vetiver_model(model = mod,
-                                 versioned = ,description = ,
-                                 nameOfClass()
+                                 #versioned = ,description = ,
                                   metrics, residuals)
+  
   
   
   

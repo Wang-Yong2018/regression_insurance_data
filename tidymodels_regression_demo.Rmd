@@ -1184,7 +1184,7 @@ n_cores <- 4  # Leave one core free
 cl <- makeCluster(n_cores)
 registerDoParallel(cl)
 
-get_fit_wset(df, rcp_list,cv=5)
+best_mod <- get_fit_wset(df, rcp_list,cv=3)
   
 stopCluster(cl)
   

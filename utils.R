@@ -443,7 +443,8 @@ get_fit_wset <- function(df, rcps, cv = 3, init_seed = 1234,is_save=FALSE) {
   print(best_result) 
   # plot all the resmaple fit result 
   autoplot(fit_chi_models)|>print()
-  
+  best_param <- 
+    fit_chi_models |>extract_workflow_set_result()
   print('found the best model and finalizing now.')
   
   # best_wf <-
@@ -577,4 +578,24 @@ save_fited_workflow <-function(wf,
     result <- fit_mod
   }
   return(result)
+}
+
+get_finalized_mod <- function(fitted_wfs,metric_name='rmse'){
+  
+  
+  best_wf_id <- 
+    fitted_wfs |>
+    rank_results(rank_metric=metric_name,select_best=T) |>
+    filter(.metric==metric_name) |>
+    arrange(mean,std_err)|>
+    head(1)|>
+    pull(wflow_id) 
+  
+  wk <- 
+    fitted_wfs |> 
+    extract_workflow_set_result(best_wf_id) |>
+    extract_workflow() 
+  
+  return(wf)
+  
 }
