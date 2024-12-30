@@ -422,7 +422,7 @@ get_fit_wset <- function(df, rcps, cv = 3, init_seed = 1234,is_save=FALSE) {
     workflow_set(preproc =rcps,
                  models = get_input_eng_list(),
                  cross = TRUE) |>
-    option_add(control = control_grid(save_workflow = is_save))
+    option_add(control = control_grid(save_workflow =TRUE ))
   
   fit_chi_models <-
     chi_models %>%

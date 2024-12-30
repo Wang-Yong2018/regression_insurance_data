@@ -43,6 +43,8 @@ get_duck_con <- function() {
 
 get_train_old <- function() {
   con <- get_duck_con()
+  # convert the duckdb link to data.table in following code
+  
   ddb <-
     tbl(con, 'train') |>
     mutate(
